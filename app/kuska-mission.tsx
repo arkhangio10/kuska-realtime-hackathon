@@ -31,6 +31,7 @@ import type { RemoteWorldPlayer, SpatialEvent, WorldPosition } from "@/lib/realt
 
 const aliasList = ["Río Claro", "Algarrobo", "Luz Norte", "Marea Verde", "Sol Andino"];
 const uid = () => crypto.randomUUID();
+const sharedAlternativeId = (prefix: "bridge" | "candidate", caseId: string, actorId: string, optionId = "") => `${prefix}-${caseId.replace(/[^a-z0-9-]/gi, "").slice(0, 34)}-${actorId.replace(/[^a-z0-9-]/gi, "").slice(-12)}${optionId ? `-${optionId.replace(/[^a-z0-9-]/gi, "").slice(0, 14)}` : ""}`.slice(0, 80);
 
 const urgencyCopy: Record<CaseStudy["severity"], { label: string; action: string }> = {
   info: { label: "Seguimiento", action: "Verificar cambios antes de movilizar recursos." },
@@ -253,6 +254,10 @@ export function KuskaMission() {
     if (event.kind === "proposal.created" && event.proposal && event.proposal.author.kind === "human") {
       setProposals(current => current.some(item => item.id === event.proposal?.id) ? current : [...current, event.proposal!]);
     }
+    if (event.kind === "alternative.created" && event.proposal && event.proposal.author.kind === "agent") {
+      setProposals(current => current.some(item => item.id === event.proposal.id) ? current : [...current, event.proposal]);
+      setNote(`Nueva alternativa compartida por ${event.actor.alias}. Ya está disponible para toda la sala.`);
+    }
     if (event.kind === "vote.cast" && event.vote && event.vote.actorId === event.actor.id) {
       setVotes(current => [...current.filter(item => !(item.proposalId === event.vote?.proposalId && item.actorId === event.vote?.actorId)), event.vote!]);
     }
@@ -322,12 +327,12 @@ export function KuskaMission() {
       }
       if (!response.ok || !data.result) throw new Error(data.error ?? "bridge_failed");
       const result = data.result as BridgeResult;
-      const oldBridgeIds = new Set(proposals.filter(item => item.bridge).map(item => item.id));
       const generation = data.source === "openai" ? "openai" : "fallback";
+      const sharedProposal: Proposal = { id: sharedAlternativeId("bridge", selectedCase.id, roomActor.id, uid().slice(0, 8)), text: result.bridge, author: { id: generation === "openai" ? "kuska-ia" : "kuska-rules", alias: generation === "openai" ? "KUSKA IA" : "KUSKA contingencia", role: generation === "openai" ? "Facilitadora IA" : "Regla determinista", kind: "agent" }, createdAt: new Date().toISOString(), bridge: true, basedOn: result.basedOnProposalIds, generation };
       setBridge(result);
       setWorkspaceView("solutions");
-      setVotes(current => current.filter(item => !oldBridgeIds.has(item.proposalId)));
-      setProposals(current => [...current.filter(item => !item.bridge), { id: `bridge-${uid()}`, text: result.bridge, author: { id: generation === "openai" ? "kuska-ia" : "kuska-rules", alias: generation === "openai" ? "KUSKA IA" : "KUSKA contingencia", role: generation === "openai" ? "Facilitadora IA" : "Regla determinista", kind: "agent" }, createdAt: new Date().toISOString(), bridge: true, basedOn: result.basedOnProposalIds, generation }]);
+      setProposals(current => current.some(item => item.id === sharedProposal.id) ? current.map(item => item.id === sharedProposal.id ? sharedProposal : item) : [...current, sharedProposal]);
+      void realtimeRef.current?.publish({ eventId: uid(), kind: "alternative.created", createdAt: sharedProposal.createdAt, actor: roomActor, proposal: sharedProposal });
       setNote(generation === "openai" ? "KUSKA IA publicó una propuesta puente para que la sala la evalúe." : data.note ?? "Se publicó una alternativa determinista de contingencia.");
       setAnalysis("idle");
       setAnalysisModalOpen(false);
@@ -339,8 +344,10 @@ export function KuskaMission() {
   }
 
   function promoteSolution(option: BridgeResult["solutionOptions"][number]) {
-    const id = `candidate-${selectedCase.id}-${option.id}`;
-    setProposals(current => current.some(item => item.id === id) ? current : [...current, { id, text: option.summary, author: { id: "kuska-ia", alias: "KUSKA IA", role: "Generadora de alternativas", kind: "agent" }, createdAt: new Date().toISOString(), basedOn: option.basedOnProposalIds, generation: "openai" }]);
+    const id = sharedAlternativeId("candidate", selectedCase.id, roomActor.id, option.id);
+    const proposal: Proposal = { id, text: option.summary, author: { id: "kuska-ia", alias: "KUSKA IA", role: "Generadora de alternativas", kind: "agent" }, createdAt: new Date().toISOString(), basedOn: option.basedOnProposalIds, generation: "openai" };
+    setProposals(current => current.some(item => item.id === id) ? current : [...current, proposal]);
+    void realtimeRef.current?.publish({ eventId: uid(), kind: "alternative.created", createdAt: proposal.createdAt, actor: roomActor, proposal });
     setProposalPage(0);
     setWorkspaceView("vote");
     setNote(`“${option.title}” se añadió como opción. Ahora las personas pueden apoyarla o señalar preocupaciones.`);
@@ -401,7 +408,7 @@ export function KuskaMission() {
         <nav className="workspace-tabs" aria-label="Etapas de la mesa de acuerdos">
           <button className={workspaceView === "case" ? "active" : ""} aria-pressed={workspaceView === "case"} onClick={() => setWorkspaceView("case")}><span>1</span><b>Caso</b><small>Entender</small></button>
           <button className={workspaceView === "solutions" ? "active" : ""} aria-pressed={workspaceView === "solutions"} onClick={() => setWorkspaceView("solutions")}><span>2</span><b>Alternativas</b><small>{bridge ? `${bridge.solutionOptions.length} listas` : "Generar"}</small></button>
-          <button className={workspaceView === "vote" ? "active" : ""} aria-pressed={workspaceView === "vote"} onClick={() => setWorkspaceView("vote")}><span>3</span><b>Votación</b><small>{totalReactions} humanas</small></button>
+          <button className={workspaceView === "vote" ? "active" : ""} aria-pressed={workspaceView === "vote"} onClick={() => setWorkspaceView("vote")}><span>3</span><b>Votación</b><small>{humanIds.size} personas · {totalReactions} reacciones</small></button>
         </nav>
         <aside id="evidence-drawer" className={`evidence-rail hud-drawer hud-drawer-left ${hudPanel === "evidence" ? "is-open" : ""}`} aria-hidden={hudPanel !== "evidence"}>
           <div className="hud-drawer-head"><div><small>ARCHIVO DE MISIÓN</small><b>Datos y fuentes</b></div><button aria-label="Cerrar datos" onClick={() => setHudPanel(null)}>×</button></div>
@@ -481,7 +488,7 @@ export function KuskaMission() {
             <div className="solution-grid">{bridge.solutionOptions.slice(Math.min(solutionPage, bridge.solutionOptions.length - 1), Math.min(solutionPage, bridge.solutionOptions.length - 1) + 1).map((option) => {
               const index = bridge.solutionOptions.findIndex(item => item.id === option.id);
               const recommended = option.id === bridge.recommendedSolutionId;
-              const alreadyAdded = proposals.some(item => item.id === `candidate-${selectedCase.id}-${option.id}`);
+              const alreadyAdded = proposals.some(item => item.id === sharedAlternativeId("candidate", selectedCase.id, roomActor.id, option.id));
               return <article className={recommended ? "solution-card recommended" : "solution-card"} key={option.id}>
                 <div className="solution-card-top"><span>0{index + 1}</span>{recommended && <b>Mejor punto de partida</b>}<em>viabilidad {option.feasibility === "high" ? "alta" : option.feasibility === "medium" ? "media" : "baja"}</em></div>
                 <h3>{option.title}</h3><p className="solution-summary">{option.summary}</p>
@@ -503,7 +510,9 @@ export function KuskaMission() {
               const tally = humanTallies.find(item => item.proposalId === proposal.id) ?? { agree: 0, concern: 0, pass: 0 };
               const demoTally = demoTallies.find(item => item.proposalId === proposal.id) ?? { agree: 0, concern: 0, pass: 0 };
               const evaluated = tally.agree + tally.concern;
-              const support = evaluated ? Math.round(tally.agree / evaluated * 100) : 0;
+              const eligibleVoters = Math.max(humanIds.size, 1);
+              const roomSupport = Math.round(tally.agree / eligibleVoters * 100);
+              const pendingVotes = Math.max(eligibleVoters - evaluated, 0);
               const myVote = uniqueVotes.find(item => item.proposalId === proposal.id && item.actorId === roomActor.id)?.value;
               const incompleteAiText = proposal.author.kind === "agent" && !hasCompleteSentence(proposal.text);
               return <article className={proposal.bridge ? "proposal bridge decision-proposal" : "proposal decision-proposal"} key={proposal.id}>
@@ -511,7 +520,7 @@ export function KuskaMission() {
                 <p>{proposal.text}</p>
                 {incompleteAiText && <small className="proposal-text-warning">La IA devolvió una frase incompleta. Regenera la alternativa antes de simularla.</small>}
                 {proposal.basedOn && <small className="based">Integra {proposal.basedOn.length} propuestas existentes</small>}
-                <div className="proposal-evidence"><div><span>Apoyo humano</span><b>{evaluated ? `${support}%` : "—"}</b></div><div className="proposal-track"><i style={{ width: `${support}%` }} /></div><small>{tally.agree} apoyos · {tally.concern} preocupaciones humanas<br />Simulación: {demoTally.agree} apoyos · {demoTally.concern} preocupaciones</small></div>
+                <div className="proposal-evidence"><div><span>Apoyo de la sala</span><b>{roomSupport}%</b></div><div className="proposal-track"><i style={{ width: `${roomSupport}%` }} /></div><small>{tally.agree} de {eligibleVoters} personas apoyan · {tally.concern} preocupaciones · {pendingVotes} pendientes<br />Simulación: {demoTally.agree} apoyos · {demoTally.concern} preocupaciones</small></div>
                 <div className="actions"><button onClick={() => vote(proposal.id, "agree")} aria-pressed={myVote === "agree"} className={myVote === "agree" ? "selected" : ""}>✓ Apoyar <b>{tally.agree}</b></button><button onClick={() => vote(proposal.id, "concern")} aria-pressed={myVote === "concern"} className={myVote === "concern" ? "selected concern" : ""}>! Señalar preocupación <b>{tally.concern}</b></button><button className={`simulate-impact ${scenePlanProposalId === proposal.id ? "is-planning" : ""}`} aria-busy={scenePlanProposalId === proposal.id} aria-live="polite" disabled={incompleteAiText ? analysis === "working" || analysisCooldown > 0 : myVote !== "agree" || Boolean(scenePlanProposalId)} onClick={() => incompleteAiText ? void analyze() : simulateDecision(proposal)}>{incompleteAiText ? analysis === "working" ? "Regenerando…" : "Regenerar texto completo" : scenePlanProposalId === proposal.id ? <><span className="scene-planning-label"><i />Traduciendo la decisión al territorio…</span><small>Relacionando acciones, señales y riesgos visibles</small></> : myVote === "agree" ? "Probar en el territorio →" : "Apoya para probar"}</button></div>
               </article>;
             })}

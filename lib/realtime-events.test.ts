@@ -72,4 +72,17 @@ describe("Portal realtime collaboration", () => {
     const invalid = { kind: "player.moved", sentAt: Date.now(), actor: actor(users[1]), position: { x: 999, z: 0, rotation: 0, moving: true, visible: true } };
     expect(normalizeSpatialEvent(invalid, users[1].senderId)).toBeNull();
   });
+
+  it("shares an AI alternative without mislabeling it as the human who triggered it", () => {
+    const event: RealtimeEvent = {
+      eventId: "alternative-event-1", kind: "alternative.created", createdAt: new Date().toISOString(), actor: actor(users[0]),
+      proposal: { id: "candidate-shared-1", text: "Validar dos rutas y publicar responsables antes de activar la respuesta comunitaria.", author: { id: "kuska-ia", alias: "KUSKA IA", role: "Generadora de alternativas", kind: "agent" }, createdAt: new Date().toISOString(), generation: "openai" },
+    };
+    const normalized = normalizePortalEvent(event, users[0].senderId);
+    expect(normalized?.actor.id).toBe("portal-ana");
+    expect(normalized?.kind === "alternative.created" && normalized.proposal.author).toEqual(event.proposal.author);
+    const state = normalized ? applyCollaborationEvent(emptyState(), normalized) : emptyState();
+    expect(state.proposals).toEqual([event.proposal]);
+    expect(portalPayloadBytes(event)).toBeLessThan(PORTAL_EVENT_MAX_BYTES);
+  });
 });

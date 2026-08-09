@@ -64,12 +64,14 @@ for (const caseStudy of selectedCases) {
     const createdAt = new Date().toISOString();
     const event = { eventId: `${proposalId}-created`, kind: "proposal.created", createdAt, actor: { id: "client-local", ...users[0], kind: "human" }, proposal: { id: proposalId, text, author: { id: "client-local", ...users[0], kind: "human" }, createdAt } };
     await handles[0].send({ type: event.kind, content: event });
+    const alternative = { eventId: `${proposalId}-alternative`, kind: "alternative.created", createdAt, actor: { id: "client-local", ...users[1], kind: "human" }, proposal: { id: `${proposalId}-ai`.slice(0, 80), text: "Coordinar una verificación local con responsables y señales de activación antes de ejecutar medidas.", author: { id: "kuska-ia", alias: "KUSKA IA", role: "Generadora de alternativas", kind: "agent" }, createdAt, generation: "openai" } };
+    await handles[1].send({ type: alternative.kind, content: alternative });
     for (let index = 0; index < users.length; index++) {
       const vote = { eventId: `${proposalId}-vote-${index}`, kind: "vote.cast", createdAt: new Date().toISOString(), actor: { id: `client-${index}`, ...users[index], kind: "human" }, vote: { proposalId, actorId: `client-${index}`, value: index === users.length - 1 ? "concern" : "agree" } };
       await handles[index].send({ type: vote.kind, content: vote });
     }
 
-    const expectedMessages = users.length + 1;
+    const expectedMessages = users.length + 2;
     await waitFor(() => handles.every(handle => handle.messages.filter(message => !message.retracted).length >= expectedMessages), `convergencia de mensajes en ${caseStudy.country}`);
     const senderCounts = handles.map(handle => new Set(handle.messages.map(message => message.sender.id)).size);
     if (senderCounts.some(count => count < users.length)) throw new Error(`Portal no distinguió las ${users.length} identidades en ${caseStudy.country}.`);
