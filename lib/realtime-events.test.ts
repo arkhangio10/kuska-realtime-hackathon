@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { actorsFromPresence, applyCollaborationEvent, normalizePortalEvent, portalPayloadBytes, PORTAL_EVENT_MAX_BYTES, type CollaborationState, type RealtimeEvent } from "./realtime-events";
+import { actorsFromPresence, applyCollaborationEvent, normalizePortalEvent, normalizeSpatialEvent, portalPayloadBytes, PORTAL_EVENT_MAX_BYTES, type CollaborationState, type RealtimeEvent, type SpatialEvent } from "./realtime-events";
 
 const users = [
   { id: "client-ana", senderId: "portal-ana", alias: "Ana", role: "Vecina de la zona" },
@@ -58,5 +58,18 @@ describe("Portal realtime collaboration", () => {
       { id: "portal-remote", metadata: { alias: "María", role: "Vecina de la zona" } },
     ] }, "portal-self");
     expect(people).toEqual([{ id: "portal-remote", alias: "María", role: "Vecina de la zona", kind: "human" }]);
+  });
+
+  it("validates spatial updates and binds the avatar to Portal's verified sender", () => {
+    const update: SpatialEvent = { kind: "player.moved", sentAt: Date.now(), actor: actor(users[0]), position: { x: 2.4, z: -3.1, rotation: 1.2, moving: true, visible: true } };
+    const normalized = normalizeSpatialEvent(update, users[0].senderId);
+    expect(normalized?.actor.id).toBe("portal-ana");
+    expect(normalized?.position).toEqual(update.position);
+    expect(portalPayloadBytes(update)).toBeLessThan(PORTAL_EVENT_MAX_BYTES);
+  });
+
+  it("rejects impossible world coordinates instead of rendering a remote avatar", () => {
+    const invalid = { kind: "player.moved", sentAt: Date.now(), actor: actor(users[1]), position: { x: 999, z: 0, rotation: 0, moving: true, visible: true } };
+    expect(normalizeSpatialEvent(invalid, users[1].senderId)).toBeNull();
   });
 });

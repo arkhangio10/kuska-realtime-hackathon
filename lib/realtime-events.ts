@@ -15,9 +15,26 @@ export const realtimeEventSchema = z.discriminatedUnion("kind", [
 ]);
 
 export type RealtimeEvent = z.infer<typeof realtimeEventSchema>;
+export const worldPositionSchema = z.object({
+  x: z.number().finite().min(-12).max(12),
+  z: z.number().finite().min(-12).max(12),
+  rotation: z.number().finite().min(-Math.PI * 2).max(Math.PI * 2),
+  moving: z.boolean(),
+  visible: z.boolean(),
+});
+export const spatialEventSchema = z.object({
+  kind: z.literal("player.moved"),
+  sentAt: z.number().int().positive(),
+  actor: actorSchema,
+  position: worldPositionSchema,
+});
+export type WorldPosition = z.infer<typeof worldPositionSchema>;
+export type SpatialEvent = z.infer<typeof spatialEventSchema>;
+export type RemoteWorldPlayer = SpatialEvent & { receivedAt: number };
+export type RealtimePayload = RealtimeEvent | SpatialEvent;
 export const PORTAL_EVENT_MAX_BYTES = 1_900;
 
-export function portalPayloadBytes(event: RealtimeEvent) {
+export function portalPayloadBytes(event: unknown) {
   return new TextEncoder().encode(JSON.stringify(event)).byteLength;
 }
 
@@ -28,6 +45,12 @@ export function normalizePortalEvent(content: unknown, senderId: string): Realti
   if (parsed.data.kind === "proposal.created") return { ...parsed.data, actor, proposal: { ...parsed.data.proposal, author: actor } };
   if (parsed.data.kind === "vote.cast") return { ...parsed.data, actor, vote: { ...parsed.data.vote, actorId: senderId } };
   return { ...parsed.data, actor, chat: { ...parsed.data.chat, alias: actor.alias, kind: "human" } };
+}
+
+export function normalizeSpatialEvent(content: unknown, senderId: string): SpatialEvent | null {
+  const parsed = spatialEventSchema.safeParse(content);
+  if (!parsed.success || !senderId) return null;
+  return { ...parsed.data, actor: { ...parsed.data.actor, id: senderId, kind: "human" } };
 }
 
 type PresenceLike = { kind: "detailed"; participants: Array<{ id: string; metadata?: Record<string, unknown> }>; count: number } | { kind: "aggregate"; count: number } | undefined;

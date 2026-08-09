@@ -27,6 +27,7 @@ import { AnalysisProgress } from "./analysis-progress";
 import { BridgeCarousel } from "./bridge-carousel";
 import { attachScenePlan, buildDecisionScenario, type DecisionScenario } from "@/lib/decision-simulation";
 import { deterministicScenePlan, type ScenePlan } from "@/lib/scene-plan";
+import type { RemoteWorldPlayer, SpatialEvent, WorldPosition } from "@/lib/realtime-events";
 
 const aliasList = ["Río Claro", "Algarrobo", "Luz Norte", "Marea Verde", "Sol Andino"];
 const uid = () => crypto.randomUUID();
@@ -113,7 +114,9 @@ export function KuskaMission() {
   const [scenePlanProposalId, setScenePlanProposalId] = useState<string | null>(null);
   const [agentStatus, setAgentStatus] = useState<"idle" | "working">("idle");
   const [realtime, setRealtime] = useState<RealtimeState>({ status: portalConfigured ? "connecting" : "local", people: 1, connected: false, participants: [] });
+  const [remotePlayers, setRemotePlayers] = useState<RemoteWorldPlayer[]>([]);
   const realtimeRef = useRef<RealtimeRoomHandle>(null);
+  const realtimeSelfIdRef = useRef<string | undefined>(undefined);
   const newsFeed = newsState?.caseId === selectedCase.id ? newsState.feed : null;
   const evidenceBundle = evidenceState?.caseId === selectedCase.id ? evidenceState.bundle : null;
   const evidenceStatus = evidenceBundle ? "ready" : evidenceErrorCaseId === selectedCase.id ? "error" : "loading";
@@ -163,6 +166,11 @@ export function KuskaMission() {
     const timer = window.setInterval(() => setAnalysisCooldown(value => Math.max(0, value - 1)), 1000);
     return () => window.clearInterval(timer);
   }, [analysisCooldown]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setRemotePlayers(current => current.filter(player => Date.now() - player.receivedAt < 4_500)), 1_000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     const closeDrawer = (event: KeyboardEvent) => { if (event.key === "Escape") setHudPanel(null); };
@@ -253,6 +261,27 @@ export function KuskaMission() {
     }
   }, []);
 
+  const applySpatialEvent = useCallback((event: SpatialEvent) => {
+    if (event.actor.id === realtimeSelfIdRef.current) return;
+    setRemotePlayers(current => {
+      if (!event.position.visible) return current.filter(player => player.actor.id !== event.actor.id);
+      const next = { ...event, receivedAt: Date.now() };
+      const existing = current.findIndex(player => player.actor.id === event.actor.id);
+      if (existing < 0) return [...current, next];
+      return current.map((player, index) => index === existing ? next : player);
+    });
+  }, []);
+
+  const applyRealtimeState = useCallback((state: RealtimeState) => {
+    realtimeSelfIdRef.current = state.selfId;
+    setRealtime(state);
+    if (state.selfId) setRemotePlayers(current => current.filter(player => player.actor.id !== state.selfId));
+  }, []);
+
+  const publishWorldPosition = useCallback((position: WorldPosition) => {
+    void realtimeRef.current?.publishPosition(position);
+  }, []);
+
   async function runDemoAgents() {
     if (!evidenceBundle || agentStatus === "working") { setNote("Espera a que el registro de evidencia esté listo."); return; }
     setAgentStatus("working");
@@ -339,12 +368,12 @@ export function KuskaMission() {
     }
   }
 
-  if (scene === "world") return <WorldExplorer alias={actor.alias} role={actor.role} caseStudy={selectedCase} scenario={decisionScenario} onClearScenario={() => setDecisionScenario(null)} onBack={() => setScene("map")} onOpenMission={() => setScene("room")} />;
-  if (scene === "map") return <VoxelGateway key={casesReady ? caseFeed.updatedAt || "fallback" : "loading"} cases={caseFeed.cases} loading={!casesReady} onEnter={caseStudy => { setSelectedCase(caseStudy); setDecisionScenario(null); setScene("world"); }} />;
+  const realtimeLayer = <RealtimeRoom ref={realtimeRef} caseId={selectedCase.id} actor={actor} onEvent={applyRealtimeEvent} onSpatialEvent={applySpatialEvent} onState={applyRealtimeState} />;
+  if (scene === "world") return <>{realtimeLayer}<WorldExplorer alias={actor.alias} role={actor.role} caseStudy={selectedCase} scenario={decisionScenario} remotePlayers={remotePlayers} onPositionChange={publishWorldPosition} onClearScenario={() => setDecisionScenario(null)} onBack={() => setScene("map")} onOpenMission={() => setScene("room")} /></>;
+  if (scene === "map") return <>{realtimeLayer}<VoxelGateway key={casesReady ? caseFeed.updatedAt || "fallback" : "loading"} cases={caseFeed.cases} loading={!casesReady} onEnter={caseStudy => { setSelectedCase(caseStudy); setRemotePlayers([]); setDecisionScenario(null); setScene("world"); }} /></>;
 
   return (
-    <main className="mission-room">
-      <RealtimeRoom ref={realtimeRef} caseId={selectedCase.id} actor={actor} onEvent={applyRealtimeEvent} onState={setRealtime} />
+    <>{realtimeLayer}<main className="mission-room">
       <header className="top">
         <button className="back-map" onClick={() => setScene("world")}>← Mundo</button>
         <div className="brand">KUSKA <span>juntos</span></div>
@@ -529,6 +558,6 @@ export function KuskaMission() {
           <section className="notice"><b>Última actividad</b><p>{note}</p><small>KUSKA explora alternativas; no sustituye autoridades ni especialistas.</small></section>
         </aside>
       </div>
-    </main>
+    </main></>
   );
 }

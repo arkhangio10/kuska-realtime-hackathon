@@ -6,6 +6,7 @@ import { formatActivityDate, HAZARD_ICONS, type CaseStudy } from "@/lib/cases";
 import type { NewsFeed } from "@/lib/news";
 import { interpolateVisual, type DecisionScenario } from "@/lib/decision-simulation";
 import type { SceneElement } from "@/lib/scene-plan";
+import type { RemoteWorldPlayer, WorldPosition } from "@/lib/realtime-events";
 
 type WorldExplorerProps = {
   alias: string;
@@ -15,6 +16,8 @@ type WorldExplorerProps = {
   onClearScenario: () => void;
   caseStudy: CaseStudy;
   scenario: DecisionScenario | null;
+  remotePlayers: RemoteWorldPlayer[];
+  onPositionChange: (position: WorldPosition) => void;
 };
 
 const motionLabels:Record<CaseStudy["hazardKind"],string>={flood:"CORRIENTE Y NIVEL VARIABLES",earthquake:"PULSOS SÍSMICOS Y RÉPLICAS",cyclone:"RÁFAGAS Y ESCOMBROS EN ROTACIÓN",volcano:"LAVA, EYECCIONES Y CENIZA",wildfire:"BRASAS, HUMO Y PROPAGACIÓN",drought:"POLVO Y ESTRÉS HÍDRICO",tsunami:"OLEAJE Y AVANCE DEL AGUA",storm_surge:"MAREA, LLUVIA Y RÁFAGAS",landslide:"ROCAS Y SUELO EN MOVIMIENTO",heatwave:"CALOR Y ONDAS TÉRMICAS",cold_wave:"NIEVE, HIELO Y VIENTO",chemical:"FUGA Y NUBE CONTAMINANTE",biological:"PERÍMETRO SANITARIO ACTIVO",radiological:"PULSO DE ZONA RADIOLÓGICA",transport:"FUEGO, CHISPAS Y HUMO",other:"RIESGO AMBIENTAL ACTIVO"};
@@ -77,7 +80,19 @@ function makeAvatar(colors: [number, number], demo = false) {
   return group;
 }
 
-export function WorldExplorer({ alias, role, onBack, onOpenMission, onClearScenario, caseStudy, scenario }: WorldExplorerProps) {
+function makePlayerLabel(alias: string) {
+  const canvas = document.createElement("canvas"); canvas.width = 512; canvas.height = 96;
+  const context = canvas.getContext("2d"); if (!context) return null;
+  context.fillStyle = "rgba(12,48,40,.94)"; context.beginPath(); context.roundRect(4, 4, 504, 88, 18); context.fill();
+  context.fillStyle = "#b6df37"; context.beginPath(); context.arc(38, 48, 10, 0, Math.PI * 2); context.fill();
+  context.fillStyle = "#f6f8ec"; context.font = "700 29px Arial"; context.textBaseline = "middle"; context.fillText(alias.slice(0, 24), 62, 49);
+  const texture = new THREE.CanvasTexture(canvas); texture.colorSpace = THREE.SRGBColorSpace;
+  const material = new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false });
+  const sprite = new THREE.Sprite(material); sprite.scale.set(3.8, .72, 1); sprite.position.set(0, 2.55, 0); sprite.userData.texture = texture;
+  return sprite;
+}
+
+export function WorldExplorer({ alias, role, onBack, onOpenMission, onClearScenario, caseStudy, scenario, remotePlayers, onPositionChange }: WorldExplorerProps) {
   const mountRef = useRef<HTMLDivElement>(null);
   const keysRef = useRef(new Set<string>());
   const [nearPerson, setNearPerson] = useState<string | null>(null);
@@ -95,6 +110,8 @@ export function WorldExplorer({ alias, role, onBack, onOpenMission, onClearScena
   const visual=useMemo(()=>caseStudy.visual,[caseStudy]);
   const visualRef=useRef({visual,severity:caseStudy.severity});
   const scenarioProgressRef=useRef(0);
+  const remotePlayersRef=useRef(remotePlayers);
+  useEffect(()=>{remotePlayersRef.current=remotePlayers},[remotePlayers]);
   useEffect(()=>{visualRef.current={visual,severity:caseStudy.severity}},[visual,caseStudy.severity]);
   useEffect(()=>{
     visualRef.current={visual:caseStudy.visual,severity:caseStudy.severity};
@@ -146,7 +163,7 @@ export function WorldExplorer({ alias, role, onBack, onOpenMission, onClearScena
     const houses: Array<[number, number]> = [[-6,-4],[-8,0],[5,-5],[7,2],[5,7]];
     const avatarSpots: Array<[number, number]> = [[-4,4],[4,3],[6,-4]];
     const collidesWithHouse = (x: number, z: number) => houses.some(([hx,hz]) => Math.abs(x-hx)<1.55 && Math.abs(z-hz)<1.4);
-    const collidesWithAvatar = (x: number, z: number) => avatarSpots.some(([ax,az]) => Math.hypot(x-ax,z-az)<.82);
+    const collidesWithAvatar = (x: number, z: number) => avatarSpots.some(([ax,az]) => Math.hypot(x-ax,z-az)<.82) || remotePlayersRef.current.some(remote => remote.position.visible && Math.hypot(x-remote.position.x,z-remote.position.z)<.82);
     const fireZoneAt = (x: number, z: number) => visualRef.current.visual.fire>.2 && Math.hypot(x-hazardCenter.x,z-hazardCenter.z)<(kind==="volcano"?4.55:kind==="wildfire"?3.8:3.1);
     const contaminationAt = (x: number, z: number) => visualRef.current.visual.contamination>.2 && Math.hypot(x-hazardCenter.x,z-hazardCenter.z)<3.25;
     const rubbleAt = (x: number, z: number) => visualRef.current.visual.shake>.25 && Math.hypot(x-hazardCenter.x,z-hazardCenter.z)<2.2;
@@ -241,6 +258,7 @@ export function WorldExplorer({ alias, role, onBack, onOpenMission, onClearScena
       { name: "Diego R. · Comerciante", object: makeAvatar([0xd0b274, 0x384a5b], true), position: new THREE.Vector3(6, .4, -4) },
     ];
     npcs.forEach(npc => { npc.object.position.copy(npc.position); scene.add(npc.object); });
+    const remoteAvatars = new Map<string, { object: THREE.Group; label: THREE.Sprite | null }>();
 
     const rainCount = 1200;
     const rainPositions = new Float32Array(rainCount * 3);
@@ -318,7 +336,7 @@ export function WorldExplorer({ alias, role, onBack, onOpenMission, onClearScena
     const onKeyDown = (event: KeyboardEvent) => { keysRef.current.add(event.key.toLowerCase()); if (event.key.toLowerCase() === "e") setChatOpen(true); };
     const onKeyUp = (event: KeyboardEvent) => keysRef.current.delete(event.key.toLowerCase());
     window.addEventListener("keydown", onKeyDown); window.addEventListener("keyup", onKeyUp);
-    let frame = 0; let lastNear = ""; let wasBlocked = false; const clock = new THREE.Clock();
+    let frame = 0; let lastNear = ""; let wasBlocked = false; let lastPositionSent = -10; const clock = new THREE.Clock();
     const resize = () => { const width=mount.clientWidth, height=mount.clientHeight; renderer.setSize(width,height,false); camera.aspect=width/height; camera.updateProjectionMatrix(); };
     const observer = new ResizeObserver(resize); observer.observe(mount); resize();
     const animate = () => {
@@ -326,6 +344,31 @@ export function WorldExplorer({ alias, role, onBack, onOpenMission, onClearScena
       const dx = (keys.has("d") || keys.has("arrowright") ? 1 : 0) - (keys.has("a") || keys.has("arrowleft") ? 1 : 0);
       const dz = (keys.has("s") || keys.has("arrowdown") ? 1 : 0) - (keys.has("w") || keys.has("arrowup") ? 1 : 0);
       const moving = dx !== 0 || dz !== 0;
+      const activeRemoteIds = new Set(remotePlayersRef.current.map(remote => remote.actor.id));
+      for (const [id, remote] of remoteAvatars) {
+        if (activeRemoteIds.has(id)) continue;
+        scene.remove(remote.object);
+        if (remote.label) { (remote.label.material as THREE.SpriteMaterial).map?.dispose(); remote.label.material.dispose(); }
+        remoteAvatars.delete(id);
+      }
+      remotePlayersRef.current.forEach(remote => {
+        let rendered = remoteAvatars.get(remote.actor.id);
+        if (!rendered) {
+          const object = makeAvatar([0x2b8875, 0x273f5c]);
+          const label = makePlayerLabel(remote.actor.alias);
+          if (label) object.add(label);
+          object.position.set(remote.position.x, .4, remote.position.z); object.rotation.y = remote.position.rotation;
+          scene.add(object); rendered = { object, label }; remoteAvatars.set(remote.actor.id, rendered);
+        }
+        rendered.object.position.x = THREE.MathUtils.lerp(rendered.object.position.x, remote.position.x, .2);
+        rendered.object.position.z = THREE.MathUtils.lerp(rendered.object.position.z, remote.position.z, .2);
+        const rotationDelta = Math.atan2(Math.sin(remote.position.rotation-rendered.object.rotation.y), Math.cos(remote.position.rotation-rendered.object.rotation.y));
+        rendered.object.rotation.y += rotationDelta * .2;
+        rendered.object.position.y = .4 + (remote.position.moving ? Math.abs(Math.sin(time*11))*.035 : 0);
+        const swing = remote.position.moving ? Math.sin(time*11)*.55 : 0;
+        rendered.object.getObjectByName("leftArm")!.rotation.x=swing; rendered.object.getObjectByName("rightArm")!.rotation.x=-swing;
+        rendered.object.getObjectByName("leftLeg")!.rotation.x=-swing; rendered.object.getObjectByName("rightLeg")!.rotation.x=swing;
+      });
       if (moving) {
         const length = Math.hypot(dx,dz);
         const nextX = THREE.MathUtils.clamp(player.position.x + dx/length*4.2*dt,-11.5,11.5);
@@ -341,6 +384,10 @@ export function WorldExplorer({ alias, role, onBack, onOpenMission, onClearScena
         player.getObjectByName("leftLeg")!.rotation.x=-swing; player.getObjectByName("rightLeg")!.rotation.x=swing;
       }
       player.position.y = (bridgeAt(player.position.x,player.position.z) ? .48 : .4) + (moving ? Math.abs(Math.sin(clock.elapsedTime*11))*.035 : 0);
+      if (time-lastPositionSent >= (moving ? .2 : 1.5)) {
+        onPositionChange({ x: player.position.x, z: player.position.z, rotation: player.rotation.y, moving, visible: true });
+        lastPositionSent=time;
+      }
       const nearest = npcs.find(npc => npc.position.distanceTo(player.position) < 2.2)?.name || "";
       if (nearest !== lastNear) { lastNear=nearest; setNearPerson(nearest || null); }
       const state=visualRef.current;const hazard=state.visual;const interventionProgress=scenarioProgressRef.current;const elementCount=Math.max(1,scenario?.scenePlan?.elements.length??1);const activeMarkerIndex=Math.min(elementCount-1,Math.floor(interventionProgress*elementCount));interventionGroup.visible=Boolean(scenario);interventionMaterials.forEach(material=>{material.opacity=interventionProgress*.92});interventionMeshes.forEach(item=>{const elementIndex=Number(item.userData.elementIndex??0),elementStart=elementIndex/elementCount*.72,reveal=Math.max(0,Math.min(1,(interventionProgress-elementStart)*4));item.scale.y=THREE.MathUtils.lerp(item.scale.y,.18+.82*reveal,.12)});sceneMarkers.forEach((marker,index)=>{const elementStart=index/elementCount*.72,reveal=Math.max(0,Math.min(1,(interventionProgress-elementStart)*4)),material=marker.material as THREE.SpriteMaterial,targetOpacity=index===activeMarkerIndex?reveal*.96:0;material.opacity=THREE.MathUtils.lerp(material.opacity,targetOpacity,.18);marker.position.y=3.35+Math.sin(time*2+index)*.08});alertBeacons.forEach((beacon,index)=>{const pulse=.88+Math.max(0,Math.sin(time*3.4-Number(beacon.userData.phase)-index*.12))*.48*interventionProgress;beacon.scale.set(pulse,pulse,pulse);beacon.rotation.y+=dt*.9*interventionProgress});const quakeCycle=time%5.2,quakeEnvelope=quakeCycle<1.15?(1-quakeCycle/1.15)*Math.abs(Math.sin(quakeCycle*25)):0,quakePulse=kind==="earthquake"?hazard.shake*quakeEnvelope:0;const eruptionPulse=kind==="volcano"?.65+.35*Math.max(0,Math.sin(time*.82)):1;
@@ -365,8 +412,8 @@ export function WorldExplorer({ alias, role, onBack, onOpenMission, onClearScena
       const cameraFocus=scenario&&interventionProgress>.03?interventionFocus:new THREE.Vector3(player.position.x,1,player.position.z);const cameraTarget=new THREE.Vector3(cameraFocus.x+7.5,cameraFocus.y+7.2,cameraFocus.z+9.5);if(quakePulse>.01){cameraTarget.x+=Math.sin(time*37)*quakePulse*.25;cameraTarget.y+=Math.cos(time*31)*quakePulse*.16}camera.position.lerp(cameraTarget,.07); camera.lookAt(cameraFocus);
       renderer.render(scene,camera);
     }; animate();
-    return () => { cancelAnimationFrame(frame); observer.disconnect(); window.removeEventListener("keydown",onKeyDown); window.removeEventListener("keyup",onKeyUp); sceneMarkers.forEach(marker=>{(marker.material as THREE.SpriteMaterial).map?.dispose();marker.material.dispose()});renderer.dispose(); rainGeometry.dispose(); hazardGeometry.dispose();accentGeometry.dispose(); mount.removeChild(renderer.domElement); };
-  }, [caseStudy.hazardKind, caseStudy.visual.drought, scenario]);
+    return () => { onPositionChange({ x: player.position.x, z: player.position.z, rotation: player.rotation.y, moving: false, visible: false }); cancelAnimationFrame(frame); observer.disconnect(); window.removeEventListener("keydown",onKeyDown); window.removeEventListener("keyup",onKeyUp); remoteAvatars.forEach(remote=>{if(remote.label){(remote.label.material as THREE.SpriteMaterial).map?.dispose();remote.label.material.dispose()}});sceneMarkers.forEach(marker=>{(marker.material as THREE.SpriteMaterial).map?.dispose();marker.material.dispose()});renderer.dispose(); rainGeometry.dispose(); hazardGeometry.dispose();accentGeometry.dispose(); mount.removeChild(renderer.domElement); };
+  }, [caseStudy.hazardKind, caseStudy.visual.drought, onPositionChange, scenario]);
 
   const move = (key: string, pressed: boolean) => pressed ? keysRef.current.add(key) : keysRef.current.delete(key);
   const send = (event: FormEvent) => { event.preventDefault(); const text=chatText.trim(); if(!text)return; setMessages(items=>[...items,{alias,text}]); setChatText(""); };
@@ -387,7 +434,7 @@ export function WorldExplorer({ alias, role, onBack, onOpenMission, onClearScena
       <div className="scenario-effects"><span><b>−{Math.round(scenario.exposureReductionPct*scenarioProgress/100)}%</b> exposición estimada</span><span><b>−{Math.round(scenario.physicalChangePct*scenarioProgress/100)}%</b> intensidad visual</span></div>
       <p className="scenario-risk"><b>Riesgo pendiente</b>{scenario.remainingRisk}</p><small className="scenario-assumption">Supuesto: {scenario.assumption}</small><div className="scenario-actions"><button onClick={onOpenMission}>Revisar decisión</button><button onClick={onClearScenario}>Volver al estado actual</button></div>
     </section>:<section className={`world-objective severity-${caseStudy.severity}`}><small>{caseStudy.dataState==="live"?"● EN VIVO":"ACTUALIZADO"} · {HAZARD_ICONS[caseStudy.hazardKind]} {caseStudy.hazardLabel.toUpperCase()} · {caseStudy.source}</small><b>{caseStudy.eventTitle}</b><span className={`objective-origin origin-${caseStudy.origin}`}>{caseStudy.originLabel} · última señal {formatActivityDate(caseStudy.lastActivityAt)}</span><p>{caseStudy.mission}. Camina para observar cómo responde el territorio.</p><a href={caseStudy.eventUrl} target="_blank" rel="noreferrer">Ver fuente ↗</a></section>}
-    <div className="world-legend"><span><i className="human-dot"/> Tú</span><span><i className="demo-dot"/> Participante demo</span><span><i className="risk-dot"/> Zona de riesgo</span></div>
+    <div className="world-legend"><span><i className="human-dot"/> Tú</span><span><i className="remote-dot"/> {remotePlayers.length} en vivo</span><span><i className="demo-dot"/> Participante demo</span><span><i className="risk-dot"/> Zona de riesgo</span></div>
     <aside className="weather-visual-key"><small>{caseStudy.dataState==="live"?"● SEÑAL EN VIVO":"SEÑAL RECIENTE"} → MUNDO</small><h3>{caseStudy.location}, {caseStudy.country}</h3><span className="visual-updated">Actualizada {formatActivityDate(caseStudy.lastActivityAt)}</span><span className="motion-status"><i/>{motionLabels[caseStudy.hazardKind]}</span>{caseStudy.metrics.slice(0,3).map(metric=><div key={metric.label}><span>{metric.label} <b>{metric.value}</b></span><i><em style={{width:`${Math.min(100,metric.level)}%`}}/></i></div>)}<p>{hazardVisualHelp[caseStudy.hazardKind]}</p></aside>
     {nearPerson && <button className="talk-prompt" onClick={()=>setChatOpen(true)}>E · Hablar con {nearPerson}</button>}
     {hazardMessage && <div className="physics-warning">⚠ {hazardMessage}</div>}
