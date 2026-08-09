@@ -9,6 +9,7 @@ import type { SceneElement } from "@/lib/scene-plan";
 import type { RemoteWorldPlayer, WorldPosition } from "@/lib/realtime-events";
 
 type WorldExplorerProps = {
+  playerId: string;
   alias: string;
   role: string;
   onBack: () => void;
@@ -92,7 +93,7 @@ function makePlayerLabel(alias: string) {
   return sprite;
 }
 
-export function WorldExplorer({ alias, role, onBack, onOpenMission, onClearScenario, caseStudy, scenario, remotePlayers, onPositionChange }: WorldExplorerProps) {
+export function WorldExplorer({ playerId, alias, role, onBack, onOpenMission, onClearScenario, caseStudy, scenario, remotePlayers, onPositionChange }: WorldExplorerProps) {
   const mountRef = useRef<HTMLDivElement>(null);
   const keysRef = useRef(new Set<string>());
   const [nearPerson, setNearPerson] = useState<string | null>(null);
@@ -111,6 +112,8 @@ export function WorldExplorer({ alias, role, onBack, onOpenMission, onClearScena
   const visualRef=useRef({visual,severity:caseStudy.severity});
   const scenarioProgressRef=useRef(0);
   const remotePlayersRef=useRef(remotePlayers);
+  const spawnIndex=useMemo(()=>[...playerId].reduce((total,character)=>((total*31)+character.charCodeAt(0))>>>0,7)%42,[playerId]);
+  const playerSpawn=useMemo<[number,number]>(()=>[-11+(spawnIndex%7),6+Math.floor(spawnIndex/7)],[spawnIndex]);
   useEffect(()=>{remotePlayersRef.current=remotePlayers},[remotePlayers]);
   useEffect(()=>{visualRef.current={visual,severity:caseStudy.severity}},[visual,caseStudy.severity]);
   useEffect(()=>{
@@ -163,11 +166,14 @@ export function WorldExplorer({ alias, role, onBack, onOpenMission, onClearScena
     const houses: Array<[number, number]> = [[-6,-4],[-8,0],[5,-5],[7,2],[5,7]];
     const avatarSpots: Array<[number, number]> = [[-4,4],[4,3],[6,-4]];
     const collidesWithHouse = (x: number, z: number) => houses.some(([hx,hz]) => Math.abs(x-hx)<1.55 && Math.abs(z-hz)<1.4);
-    const collidesWithAvatar = (x: number, z: number) => avatarSpots.some(([ax,az]) => Math.hypot(x-ax,z-az)<.82) || remotePlayersRef.current.some(remote => remote.position.visible && Math.hypot(x-remote.position.x,z-remote.position.z)<.82);
+    const collidesWithDemoAvatar = (x: number, z: number) => avatarSpots.some(([ax,az]) => Math.hypot(x-ax,z-az)<.82);
+    const remoteDistanceAt = (x: number, z: number) => remotePlayersRef.current.reduce((distance,remote)=>remote.position.visible?Math.min(distance,Math.hypot(x-remote.position.x,z-remote.position.z)):distance,Number.POSITIVE_INFINITY);
+    const collidesWithRemoteAvatar = (x: number, z: number) => remoteDistanceAt(x,z)<.82;
+    const collidesWithAvatar = (x: number, z: number) => collidesWithDemoAvatar(x,z) || collidesWithRemoteAvatar(x,z);
     const fireZoneAt = (x: number, z: number) => visualRef.current.visual.fire>.2 && Math.hypot(x-hazardCenter.x,z-hazardCenter.z)<(kind==="volcano"?4.55:kind==="wildfire"?3.8:3.1);
     const contaminationAt = (x: number, z: number) => visualRef.current.visual.contamination>.2 && Math.hypot(x-hazardCenter.x,z-hazardCenter.z)<3.25;
     const rubbleAt = (x: number, z: number) => visualRef.current.visual.shake>.25 && Math.hypot(x-hazardCenter.x,z-hazardCenter.z)<2.2;
-    const blockedAt = (x: number, z: number) => (riverAt(x,z) && !bridgeAt(x,z)) || collidesWithHouse(x,z) || collidesWithAvatar(x,z) || fireZoneAt(x,z) || contaminationAt(x,z) || rubbleAt(x,z);
+    const blockedEnvironmentAt = (x: number, z: number) => (riverAt(x,z) && !bridgeAt(x,z)) || collidesWithHouse(x,z) || collidesWithDemoAvatar(x,z) || fireZoneAt(x,z) || contaminationAt(x,z) || rubbleAt(x,z);
 
     for (let x = -13; x <= 13; x++) {
       for (let z = -13; z <= 13; z++) {
@@ -251,7 +257,7 @@ export function WorldExplorer({ alias, role, onBack, onOpenMission, onClearScena
       const top = block(roof, [2.35, .38, 2.05], [x, 1.75, z]); top.rotation.z = index % 2 ? .08 : -.08; top.userData.baseRotation=top.rotation.z; houseMeshes.push(top); scene.add(top);
     });
 
-    const player = makeAvatar([0x173f34, 0x314d67]); player.position.set(-7, .4, 8); scene.add(player);
+    const player = makeAvatar([0x173f34, 0x314d67]); player.position.set(playerSpawn[0], .4, playerSpawn[1]); scene.add(player);
     const npcs = [
       { name: "Ana M. · Vecina", object: makeAvatar([0xc86d4d, 0x544939], true), position: new THREE.Vector3(-4, .4, 4) },
       { name: "Luz V. · Brigadista", object: makeAvatar([0xb6df37, 0x304b3f], true), position: new THREE.Vector3(4, .4, 3) },
@@ -373,7 +379,9 @@ export function WorldExplorer({ alias, role, onBack, onOpenMission, onClearScena
         const length = Math.hypot(dx,dz);
         const nextX = THREE.MathUtils.clamp(player.position.x + dx/length*4.2*dt,-11.5,11.5);
         const nextZ = THREE.MathUtils.clamp(player.position.z + dz/length*4.2*dt,-11.5,11.5);
-        const blocked = blockedAt(nextX,nextZ);
+        const currentRemoteDistance=remoteDistanceAt(player.position.x,player.position.z),nextRemoteDistance=remoteDistanceAt(nextX,nextZ);
+        const escapingOverlap=currentRemoteDistance<.82&&nextRemoteDistance>currentRemoteDistance;
+        const blocked = blockedEnvironmentAt(nextX,nextZ) || (collidesWithRemoteAvatar(nextX,nextZ) && !escapingOverlap);
         if (!blocked) { player.position.x=nextX; player.position.z=nextZ; }
         if (blocked && !wasBlocked) setHazardMessage(riverAt(nextX,nextZ) && !bridgeAt(nextX,nextZ) ? "El cauce no es transitable. Busca el puente señalizado." : fireZoneAt(nextX,nextZ) ? "Zona de fuego y calor extremo. No puedes avanzar." : contaminationAt(nextX,nextZ) ? "Zona contaminada. Mantén el perímetro de seguridad." : rubbleAt(nextX,nextZ) ? "Los escombros bloquean el paso. Busca otra ruta." : collidesWithAvatar(nextX,nextZ) ? "Hay otra persona aquí. Mantén distancia para conversar." : "No puedes atravesar una construcción.");
         if (!blocked && wasBlocked) setHazardMessage(null);
@@ -413,7 +421,7 @@ export function WorldExplorer({ alias, role, onBack, onOpenMission, onClearScena
       renderer.render(scene,camera);
     }; animate();
     return () => { onPositionChange({ x: player.position.x, z: player.position.z, rotation: player.rotation.y, moving: false, visible: false }); cancelAnimationFrame(frame); observer.disconnect(); window.removeEventListener("keydown",onKeyDown); window.removeEventListener("keyup",onKeyUp); remoteAvatars.forEach(remote=>{if(remote.label){(remote.label.material as THREE.SpriteMaterial).map?.dispose();remote.label.material.dispose()}});sceneMarkers.forEach(marker=>{(marker.material as THREE.SpriteMaterial).map?.dispose();marker.material.dispose()});renderer.dispose(); rainGeometry.dispose(); hazardGeometry.dispose();accentGeometry.dispose(); mount.removeChild(renderer.domElement); };
-  }, [caseStudy.hazardKind, caseStudy.visual.drought, onPositionChange, scenario]);
+  }, [caseStudy.hazardKind, caseStudy.visual.drought, onPositionChange, playerSpawn, scenario]);
 
   const move = (key: string, pressed: boolean) => pressed ? keysRef.current.add(key) : keysRef.current.delete(key);
   const send = (event: FormEvent) => { event.preventDefault(); const text=chatText.trim(); if(!text)return; setMessages(items=>[...items,{alias,text}]); setChatText(""); };
