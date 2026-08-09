@@ -21,6 +21,8 @@ type WorldExplorerProps = {
   onPositionChange: (position: WorldPosition) => void;
   realtimeConnected: boolean;
   realtimeStatus: string;
+  messages: Array<{ id: string; alias: string; text: string; kind: "human" | "demo-agent" }>;
+  onSendMessage: (text: string) => void;
 };
 
 const motionLabels:Record<CaseStudy["hazardKind"],string>={flood:"CORRIENTE Y NIVEL VARIABLES",earthquake:"PULSOS SÍSMICOS Y RÉPLICAS",cyclone:"RÁFAGAS Y ESCOMBROS EN ROTACIÓN",volcano:"LAVA, EYECCIONES Y CENIZA",wildfire:"BRASAS, HUMO Y PROPAGACIÓN",drought:"POLVO Y ESTRÉS HÍDRICO",tsunami:"OLEAJE Y AVANCE DEL AGUA",storm_surge:"MAREA, LLUVIA Y RÁFAGAS",landslide:"ROCAS Y SUELO EN MOVIMIENTO",heatwave:"CALOR Y ONDAS TÉRMICAS",cold_wave:"NIEVE, HIELO Y VIENTO",chemical:"FUGA Y NUBE CONTAMINANTE",biological:"PERÍMETRO SANITARIO ACTIVO",radiological:"PULSO DE ZONA RADIOLÓGICA",transport:"FUEGO, CHISPAS Y HUMO",other:"RIESGO AMBIENTAL ACTIVO"};
@@ -95,8 +97,9 @@ function makePlayerLabel(alias: string) {
   return sprite;
 }
 
-export function WorldExplorer({ playerId, alias, role, onBack, onOpenMission, onClearScenario, caseStudy, scenario, remotePlayers, onPositionChange, realtimeConnected, realtimeStatus }: WorldExplorerProps) {
+export function WorldExplorer({ playerId, alias, role, onBack, onOpenMission, onClearScenario, caseStudy, scenario, remotePlayers, onPositionChange, realtimeConnected, realtimeStatus, messages, onSendMessage }: WorldExplorerProps) {
   const mountRef = useRef<HTMLDivElement>(null);
+  const chatFeedRef = useRef<HTMLElement>(null);
   const keysRef = useRef(new Set<string>());
   const [nearPerson, setNearPerson] = useState<string | null>(null);
   const [hazardMessage, setHazardMessage] = useState<string | null>(null);
@@ -106,10 +109,6 @@ export function WorldExplorer({ playerId, alias, role, onBack, onOpenMission, on
   const [chatText, setChatText] = useState("");
   const [scenarioPhase, setScenarioPhase] = useState<"before" | "action" | "after">("before");
   const [scenarioProgress, setScenarioProgress] = useState(0);
-  const [messages, setMessages] = useState([
-    { alias: "Ana M.", text: `Estoy observando los efectos de ${caseStudy.hazardLabel.toLowerCase()}.` },
-    { alias: "Luz V.", text: "Estoy marcando una ruta segura para la comunidad." },
-  ]);
   const visual=useMemo(()=>caseStudy.visual,[caseStudy]);
   const visualRef=useRef({visual,severity:caseStudy.severity});
   const scenarioProgressRef=useRef(0);
@@ -117,6 +116,7 @@ export function WorldExplorer({ playerId, alias, role, onBack, onOpenMission, on
   const spawnIndex=useMemo(()=>[...playerId].reduce((total,character)=>((total*31)+character.charCodeAt(0))>>>0,7)%42,[playerId]);
   const playerSpawn=useMemo<[number,number]>(()=>[-11+(spawnIndex%7),6+Math.floor(spawnIndex/7)],[spawnIndex]);
   useEffect(()=>{remotePlayersRef.current=remotePlayers},[remotePlayers]);
+  useEffect(()=>{if(!chatOpen)return;const frame=requestAnimationFrame(()=>{const feed=chatFeedRef.current;if(feed)feed.scrollTop=feed.scrollHeight});return()=>cancelAnimationFrame(frame)},[chatOpen,messages.length]);
   useEffect(()=>{visualRef.current={visual,severity:caseStudy.severity}},[visual,caseStudy.severity]);
   useEffect(()=>{
     visualRef.current={visual:caseStudy.visual,severity:caseStudy.severity};
@@ -426,7 +426,7 @@ export function WorldExplorer({ playerId, alias, role, onBack, onOpenMission, on
   }, [caseStudy.hazardKind, caseStudy.visual.drought, onPositionChange, playerSpawn, scenario]);
 
   const move = (key: string, pressed: boolean) => pressed ? keysRef.current.add(key) : keysRef.current.delete(key);
-  const send = (event: FormEvent) => { event.preventDefault(); const text=chatText.trim(); if(!text)return; setMessages(items=>[...items,{alias,text}]); setChatText(""); };
+  const send = (event: FormEvent) => { event.preventDefault(); const text=chatText.trim(); if(!text)return; onSendMessage(text); setChatText(""); };
   const sceneElements=scenario?.scenePlan?.elements??[];
   const activeSceneElement=sceneElements.length?Math.min(sceneElements.length-1,Math.floor(scenarioProgress/Math.max(1,100/sceneElements.length))):-1;
   const focusedSceneElement=activeSceneElement>=0?sceneElements[activeSceneElement]:null;
@@ -451,7 +451,7 @@ export function WorldExplorer({ playerId, alias, role, onBack, onOpenMission, on
     <button className="floating-news" onClick={()=>setNewsOpen(value=>!value)}>Contexto y noticias <b>{newsFeed?newsFeed.articles.length:"…"}</b></button>
     <button className="floating-chat" onClick={()=>setChatOpen(value=>!value)}>Conversación <b>{messages.length}</b></button>
     {newsOpen&&<aside className="news-drawer"><header><div><small>CONTEXTO DEL CASO</small><b>{caseStudy.hazardLabel} · {caseStudy.country}</b></div><button onClick={()=>setNewsOpen(false)}>×</button></header><section className="official-context"><small>FUENTE OFICIAL · {caseStudy.source}</small><p>{caseStudy.details}</p><a href={caseStudy.eventUrl} target="_blank" rel="noreferrer">Abrir reporte oficial ↗</a></section><div className="news-heading"><div><small>COBERTURA PERIODÍSTICA</small><b>Qué están reportando los medios</b></div>{newsFeed&&!newsFeed.unavailable&&<span>{newsFeed.articles.length} resultados</span>}</div><section className="news-list">{!newsFeed&&<p className="news-state">Buscando cobertura relacionada…</p>}{newsFeed?.articles.map(article=><a key={article.id} href={article.url} target="_blank" rel="noreferrer">{article.imageUrl&&<span className="news-thumb" style={{backgroundImage:`url("${article.imageUrl.replace(/"/g,"")}")`}}/>}<span><small>{article.domain}{article.publishedAt?` · ${new Intl.DateTimeFormat("es-PE",{day:"2-digit",month:"short",year:"numeric"}).format(new Date(article.publishedAt))}`:""}</small><b>{article.title}</b><em>Abrir medio ↗</em></span></a>)}{newsFeed&&newsFeed.articles.length===0&&<p className="news-state">{newsFeed.note??"No se encontró cobertura suficientemente relacionada con este caso."}</p>}</section>{newsFeed&&<footer><span>Noticias indexadas por {newsFeed.source}. No cambian la severidad oficial.</span><a href={newsFeed.searchUrl} target="_blank" rel="noreferrer">Ver búsqueda completa ↗</a></footer>}</aside>}
-    {chatOpen && <aside className="world-chat"><div><b>Conversación del lugar</b><button onClick={()=>setChatOpen(false)}>×</button></div><small>Los participantes demo están identificados.</small><section>{messages.map((message,index)=><p key={`${message.alias}-${index}`}><b>{message.alias}</b>{message.text}</p>)}</section><form onSubmit={send}><input value={chatText} onChange={e=>setChatText(e.target.value)} placeholder="Escribe a las personas cercanas…" maxLength={180}/><button>↑</button></form></aside>}
+    {chatOpen && <aside className="world-chat"><div><b>Conversación del lugar {realtimeConnected&&<em><i/> EN VIVO</em>}</b><button onClick={()=>setChatOpen(false)}>×</button></div><small className={realtimeConnected?"live":"local"}>{realtimeConnected?"Compartida con las personas conectadas a este caso.":"Modo local: los mensajes no saldrán de este dispositivo."}</small><section ref={chatFeedRef} aria-live="polite">{messages.map(message=><p className={message.kind === "demo-agent" ? "simulated-message" : "human-message"} key={message.id}><b>{message.alias}{message.kind === "demo-agent" ? " · AGENTE SIMULADO" : ""}</b>{message.text}</p>)}</section><form onSubmit={send}><input aria-label="Mensaje para la conversación del lugar" value={chatText} onChange={e=>setChatText(e.target.value)} placeholder={realtimeConnected?"Escribe a la sala en vivo…":"Escribe en modo local…"} maxLength={180}/><button aria-label="Enviar mensaje">↑</button></form></aside>}
     <div className="move-help"><span>W</span><div><span>A</span><span>S</span><span>D</span></div><small>CAMINAR</small></div>
     <div className="mobile-pad"><button onPointerDown={()=>move("w",true)} onPointerUp={()=>move("w",false)}>↑</button><div><button onPointerDown={()=>move("a",true)} onPointerUp={()=>move("a",false)}>←</button><button onPointerDown={()=>move("s",true)} onPointerUp={()=>move("s",false)}>↓</button><button onPointerDown={()=>move("d",true)} onPointerUp={()=>move("d",false)}>→</button></div></div>
   </main>;

@@ -20,7 +20,7 @@ Estado actualizado el 9 de agosto de 2026. La fuente de verdad para reglas y hor
 - [x] Aplicación desplegada públicamente.
 - [x] Commits relevantes realizados y publicados dentro del periodo oficial.
 - [x] Build, tipos, lint y **29 pruebas automatizadas** aprobados.
-- [x] Smoke test de Portal aprobado con 3 casos reales y 4 usuarios simultáneos por caso, incluyendo cierre compartido de la decisión.
+- [x] Smoke test de Portal aprobado con 3 casos reales y 4 usuarios simultáneos por caso, incluyendo chat y cierre compartido de la decisión.
 
 ## Campos del formulario
 

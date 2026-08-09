@@ -38,3 +38,6 @@
 
 .remote-dot{background:#2b8875;box-shadow:0 0 0 2px rgba(43,136,117,.2)}
 .offline-dot{background:#d86f4d;box-shadow:0 0 0 2px rgba(216,111,77,.18)}
+
+/* Live conversation is visibly distinct from simulated context. */
+.world-chat>div>b{display:flex;align-items:center;gap:8px}.world-chat>div>b em{display:inline-flex;align-items:center;gap:4px;padding:3px 7px;border-radius:12px;background:#dff5ec;color:#126d5c;font-size:10px;font-style:normal;letter-spacing:.6px}.world-chat>div>b em i{width:6px;height:6px;border-radius:50%;background:#29b49e;box-shadow:0 0 0 3px rgba(41,180,158,.16)}.world-chat>small.live{color:#237967}.world-chat>small.local{color:#9b5a44}.world-chat section p.human-message{border-left:3px solid #29b49e;background:#f7fffb}.world-chat section p.simulated-message{border-left:3px solid #d86f4d;background:#fff8f4}.world-chat section p.simulated-message b{color:#a6533d}

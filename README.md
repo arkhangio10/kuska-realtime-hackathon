@@ -44,7 +44,7 @@ Portal es la capa multijugador de KUSKA. Cada caso utiliza una sala aislada y si
 - conversación del lugar;
 - historial para participantes que llegan después.
 
-La identidad de cada evento se vincula al remitente verificado por Portal. La colaboración persistente y el movimiento espacial usan canales separados por caso: quienes llegan tarde recuperan acuerdos, mientras que los avatares reciben únicamente posiciones actuales. Los eventos se validan con Zod, se deduplican por `eventId` y se mantienen debajo del límite de mensajes del SDK. Si no existe `NEXT_PUBLIC_PORTAL_API_KEY`, la aplicación funciona en un modo local indicado explícitamente en la interfaz.
+La identidad de cada evento se vincula al remitente verificado por Portal. Cada sesión recibe un alias legible con un sufijo corto para que dos personas no aparezcan con el mismo nombre. La conversación del territorio y la mesa de acuerdos muestran el mismo chat persistente: un mensaje escrito en cualquiera de las dos vistas llega a todos los participantes del caso. La colaboración persistente y el movimiento espacial usan canales separados por caso: quienes llegan tarde recuperan acuerdos y chat, mientras que los avatares reciben únicamente posiciones actuales. Los eventos se validan con Zod, se deduplican por `eventId` y se mantienen debajo del límite de mensajes del SDK. Si no existe `NEXT_PUBLIC_PORTAL_API_KEY`, la aplicación funciona en un modo local indicado explícitamente en la interfaz.
 
 Más detalles: [docs/PORTAL.md](docs/PORTAL.md).
 
@@ -171,7 +171,7 @@ npm run dev
 npm run test:portal
 ```
 
-El smoke test abre cuatro clientes aislados por caso y comprueba presencia, movimiento espacial, entrega de propuestas, sincronización de alternativas de IA, votos, cierre compartido de la decisión y convergencia del estado sin escribir en las salas normales de la demo.
+El smoke test abre cuatro clientes aislados por caso y comprueba presencia, movimiento espacial, chat persistente, entrega de propuestas, sincronización de alternativas de IA, votos, cierre compartido de la decisión y convergencia del estado sin escribir en las salas normales de la demo.
 
 ## Equipo
 

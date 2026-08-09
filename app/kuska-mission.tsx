@@ -34,6 +34,20 @@ const aliasList = ["Río Claro", "Algarrobo", "Luz Norte", "Marea Verde", "Sol A
 const uid = () => crypto.randomUUID();
 const sharedAlternativeId = (prefix: "bridge" | "candidate", caseId: string, actorId: string, optionId = "") => `${prefix}-${caseId.replace(/[^a-z0-9-]/gi, "").slice(0, 34)}-${actorId.replace(/[^a-z0-9-]/gi, "").slice(-12)}${optionId ? `-${optionId.replace(/[^a-z0-9-]/gi, "").slice(0, 14)}` : ""}`.slice(0, 80);
 type ClosedDecision = { proposalId: string; agree: number; concern: number; participantCount: number; eligibleCount: number };
+type ChatMessage = { id: string; alias: string; text: string; kind: "human" | "demo-agent" };
+
+function createSessionActor() {
+  const id = uid();
+  const hash = [...id].reduce((total, character) => total + character.charCodeAt(0), 0);
+  return { id, alias: `${aliasList[hash % aliasList.length]} · ${id.slice(0, 2).toUpperCase()}`, role: roles[hash % roles.length], kind: "human" as const };
+}
+
+function initialChat(caseStudy: CaseStudy): ChatMessage[] {
+  return [
+    { id: `demo-observation-${caseStudy.id}`.slice(0, 80), alias: "Ana M.", text: `Estoy observando los efectos de ${caseStudy.hazardLabel.toLowerCase()}.`, kind: "demo-agent" },
+    { id: `demo-question-${caseStudy.id}`.slice(0, 80), alias: "Luz V.", text: `¿Qué dato debemos verificar primero en ${caseStudy.location}?`, kind: "demo-agent" },
+  ];
+}
 
 const urgencyCopy: Record<CaseStudy["severity"], { label: string; action: string }> = {
   info: { label: "Seguimiento", action: "Verificar cambios antes de movilizar recursos." },
@@ -92,7 +106,7 @@ function proposalHeadline(proposal?: Proposal) {
 
 export function KuskaMission() {
   const [scene, setScene] = useState<"map" | "world" | "room">("map");
-  const [actor] = useState(() => ({ id: uid(), alias: aliasList[Math.floor(Math.random() * aliasList.length)], role: roles[Math.floor(Math.random() * roles.length)], kind: "human" as const }));
+  const [actor] = useState(createSessionActor);
   const [proposals, setProposals] = useState<Proposal[]>(seedProposals);
   const [votes, setVotes] = useState<VoteRecord[]>(seedVotes);
   const [text, setText] = useState("");
@@ -102,10 +116,7 @@ export function KuskaMission() {
   const [bridge, setBridge] = useState<BridgeResult | null>(null);
   const [note, setNote] = useState(portalConfigured ? "Conectando la sala compartida…" : "Sala demo local: configura NEXT_PUBLIC_PORTAL_API_KEY para activar tiempo real.");
   const [chatText, setChatText] = useState("");
-  const [chat, setChat] = useState<Array<{ id: string; alias: string; text: string; kind: "human" | "demo-agent" }>>([
-    { id: "welcome", alias: "Ana M.", text: "El agua suele cortar primero la ruta hacia Catacaos.", kind: "demo-agent" },
-    { id: "question", alias: "Luz V.", text: "¿Qué familias necesitarían apoyo para evacuar?", kind: "demo-agent" },
-  ]);
+  const [chat, setChat] = useState<ChatMessage[]>(() => initialChat(PIURA_CASE));
   const [caseFeed, setCaseFeed] = useState<CaseFeed>({ cases: [PIURA_CASE], updatedAt: "", sources: [], unavailableSources: [] });
   const [casesReady, setCasesReady] = useState(false);
   const [selectedCase, setSelectedCase] = useState<CaseStudy>(PIURA_CASE);
@@ -269,12 +280,16 @@ export function KuskaMission() {
 
   function sendChat(event: FormEvent) {
     event.preventDefault();
-    const clean = chatText.trim().slice(0, 180);
+    publishChat(chatText);
+    setChatText("");
+  }
+
+  function publishChat(value: string) {
+    const clean = value.trim().slice(0, 180);
     if (!clean) return;
     const message = { id: uid(), alias: roomActor.alias, text: clean, kind: "human" as const };
     setChat(messages => [...messages, message]);
     void realtimeRef.current?.publish({ eventId: uid(), kind: "chat.created", createdAt: new Date().toISOString(), actor: roomActor, chat: message });
-    setChatText("");
   }
 
   const applyRealtimeEvent = useCallback((event: RealtimeEvent) => {
@@ -412,8 +427,8 @@ export function KuskaMission() {
   }
 
   const realtimeLayer = <RealtimeRoom ref={realtimeRef} caseId={selectedCase.id} actor={actor} onEvent={applyRealtimeEvent} onSpatialEvent={applySpatialEvent} onState={applyRealtimeState} />;
-  if (scene === "world") return <>{realtimeLayer}<WorldExplorer playerId={roomActor.id} alias={actor.alias} role={actor.role} caseStudy={selectedCase} scenario={decisionScenario} remotePlayers={remotePlayers} onPositionChange={publishWorldPosition} realtimeConnected={realtime.connected} realtimeStatus={realtime.status} onClearScenario={() => setDecisionScenario(null)} onBack={() => setScene("map")} onOpenMission={() => setScene("room")} /></>;
-  if (scene === "map") return <>{realtimeLayer}<VoxelGateway key={casesReady ? caseFeed.updatedAt || "fallback" : "loading"} cases={caseFeed.cases} loading={!casesReady} onEnter={caseStudy => { setSelectedCase(caseStudy); setRemotePlayers([]); setDecisionScenario(null); setClosedDecision(null); setDecisionConfirmOpen(false); setScene("world"); }} /></>;
+  if (scene === "world") return <>{realtimeLayer}<WorldExplorer playerId={roomActor.id} alias={actor.alias} role={actor.role} caseStudy={selectedCase} scenario={decisionScenario} remotePlayers={remotePlayers} messages={chat} onSendMessage={publishChat} onPositionChange={publishWorldPosition} realtimeConnected={realtime.connected} realtimeStatus={realtime.status} onClearScenario={() => setDecisionScenario(null)} onBack={() => setScene("map")} onOpenMission={() => setScene("room")} /></>;
+  if (scene === "map") return <>{realtimeLayer}<VoxelGateway key={casesReady ? caseFeed.updatedAt || "fallback" : "loading"} cases={caseFeed.cases} loading={!casesReady} onEnter={caseStudy => { setSelectedCase(caseStudy); setChat(initialChat(caseStudy)); setRemotePlayers([]); setDecisionScenario(null); setClosedDecision(null); setDecisionConfirmOpen(false); setScene("world"); }} /></>;
 
   return (
     <>{realtimeLayer}<main className="mission-room">
