@@ -105,3 +105,10 @@
 .hud-drawer .case-command-title>div{position:relative;z-index:1;min-width:0;flex:1}
 .hud-drawer .case-command-title h2{line-height:1.08;overflow-wrap:anywhere}
 .hud-drawer .verification-line,.hud-drawer .event-title,.hud-drawer .freshness,.hud-drawer .source-button{position:relative;z-index:1}
+
+/* One continuous vertical scroll prevents the room drawer from trapping the wheel inside chat. */
+.hud-drawer-right{min-height:0;overflow-x:hidden!important;overflow-y:scroll!important;scrollbar-gutter:stable;touch-action:pan-y}
+.hud-drawer-right .community-chat .chat-feed{max-height:none;overflow:visible;overscroll-behavior:auto}
+.hud-drawer::-webkit-scrollbar{width:9px}
+.hud-drawer::-webkit-scrollbar-track{background:transparent}
+.hud-drawer::-webkit-scrollbar-thumb{border:2px solid #f4f5ed;border-radius:12px;background:#83958d}
