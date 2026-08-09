@@ -19,6 +19,8 @@ type WorldExplorerProps = {
   scenario: DecisionScenario | null;
   remotePlayers: RemoteWorldPlayer[];
   onPositionChange: (position: WorldPosition) => void;
+  realtimeConnected: boolean;
+  realtimeStatus: string;
 };
 
 const motionLabels:Record<CaseStudy["hazardKind"],string>={flood:"CORRIENTE Y NIVEL VARIABLES",earthquake:"PULSOS SÍSMICOS Y RÉPLICAS",cyclone:"RÁFAGAS Y ESCOMBROS EN ROTACIÓN",volcano:"LAVA, EYECCIONES Y CENIZA",wildfire:"BRASAS, HUMO Y PROPAGACIÓN",drought:"POLVO Y ESTRÉS HÍDRICO",tsunami:"OLEAJE Y AVANCE DEL AGUA",storm_surge:"MAREA, LLUVIA Y RÁFAGAS",landslide:"ROCAS Y SUELO EN MOVIMIENTO",heatwave:"CALOR Y ONDAS TÉRMICAS",cold_wave:"NIEVE, HIELO Y VIENTO",chemical:"FUGA Y NUBE CONTAMINANTE",biological:"PERÍMETRO SANITARIO ACTIVO",radiological:"PULSO DE ZONA RADIOLÓGICA",transport:"FUEGO, CHISPAS Y HUMO",other:"RIESGO AMBIENTAL ACTIVO"};
@@ -93,7 +95,7 @@ function makePlayerLabel(alias: string) {
   return sprite;
 }
 
-export function WorldExplorer({ playerId, alias, role, onBack, onOpenMission, onClearScenario, caseStudy, scenario, remotePlayers, onPositionChange }: WorldExplorerProps) {
+export function WorldExplorer({ playerId, alias, role, onBack, onOpenMission, onClearScenario, caseStudy, scenario, remotePlayers, onPositionChange, realtimeConnected, realtimeStatus }: WorldExplorerProps) {
   const mountRef = useRef<HTMLDivElement>(null);
   const keysRef = useRef(new Set<string>());
   const [nearPerson, setNearPerson] = useState<string | null>(null);
@@ -442,7 +444,7 @@ export function WorldExplorer({ playerId, alias, role, onBack, onOpenMission, on
       <div className="scenario-effects"><span><b>−{Math.round(scenario.exposureReductionPct*scenarioProgress/100)}%</b> exposición estimada</span><span><b>−{Math.round(scenario.physicalChangePct*scenarioProgress/100)}%</b> intensidad visual</span></div>
       <p className="scenario-risk"><b>Riesgo pendiente</b>{scenario.remainingRisk}</p><small className="scenario-assumption">Supuesto: {scenario.assumption}</small><div className="scenario-actions"><button onClick={onOpenMission}>Revisar decisión</button><button onClick={onClearScenario}>Volver al estado actual</button></div>
     </section>:<section className={`world-objective severity-${caseStudy.severity}`}><small>{caseStudy.dataState==="live"?"● EN VIVO":"ACTUALIZADO"} · {HAZARD_ICONS[caseStudy.hazardKind]} {caseStudy.hazardLabel.toUpperCase()} · {caseStudy.source}</small><b>{caseStudy.eventTitle}</b><span className={`objective-origin origin-${caseStudy.origin}`}>{caseStudy.originLabel} · última señal {formatActivityDate(caseStudy.lastActivityAt)}</span><p>{caseStudy.mission}. Camina para observar cómo responde el territorio.</p><a href={caseStudy.eventUrl} target="_blank" rel="noreferrer">Ver fuente ↗</a></section>}
-    <div className="world-legend"><span><i className="human-dot"/> Tú</span><span><i className="remote-dot"/> {remotePlayers.length} en vivo</span><span><i className="demo-dot"/> Participante demo</span><span><i className="risk-dot"/> Zona de riesgo</span></div>
+    <div className="world-legend"><span><i className="human-dot"/> Tú</span><span title={realtimeConnected?"Personas conectadas a este caso":"La sala en vivo no pudo conectarse"}><i className={realtimeConnected?"remote-dot":"offline-dot"}/> {realtimeConnected?`${remotePlayers.length} en vivo`:realtimeStatus==="connecting"?"Conectando…":"Sin conexión"}</span><span><i className="demo-dot"/> Participante demo</span><span><i className="risk-dot"/> Zona de riesgo</span></div>
     <aside className="weather-visual-key"><small>{caseStudy.dataState==="live"?"● SEÑAL EN VIVO":"SEÑAL RECIENTE"} → MUNDO</small><h3>{caseStudy.location}, {caseStudy.country}</h3><span className="visual-updated">Actualizada {formatActivityDate(caseStudy.lastActivityAt)}</span><span className="motion-status"><i/>{motionLabels[caseStudy.hazardKind]}</span>{caseStudy.metrics.slice(0,3).map(metric=><div key={metric.label}><span>{metric.label} <b>{metric.value}</b></span><i><em style={{width:`${Math.min(100,metric.level)}%`}}/></i></div>)}<p>{hazardVisualHelp[caseStudy.hazardKind]}</p></aside>
     {nearPerson && <button className="talk-prompt" onClick={()=>setChatOpen(true)}>E · Hablar con {nearPerson}</button>}
     {hazardMessage && <div className="physics-warning">⚠ {hazardMessage}</div>}

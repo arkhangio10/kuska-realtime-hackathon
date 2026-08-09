@@ -37,3 +37,4 @@
 @media(max-width:700px){.scenario-plan-details{display:none}.scenario-plan-focus b{font-size:12px}.scenario-plan-focus small{font-size:10px}}
 
 .remote-dot{background:#2b8875;box-shadow:0 0 0 2px rgba(43,136,117,.2)}
+.offline-dot{background:#d86f4d;box-shadow:0 0 0 2px rgba(216,111,77,.18)}

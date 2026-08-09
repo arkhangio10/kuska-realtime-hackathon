@@ -369,7 +369,7 @@ export function KuskaMission() {
   }
 
   const realtimeLayer = <RealtimeRoom ref={realtimeRef} caseId={selectedCase.id} actor={actor} onEvent={applyRealtimeEvent} onSpatialEvent={applySpatialEvent} onState={applyRealtimeState} />;
-  if (scene === "world") return <>{realtimeLayer}<WorldExplorer playerId={roomActor.id} alias={actor.alias} role={actor.role} caseStudy={selectedCase} scenario={decisionScenario} remotePlayers={remotePlayers} onPositionChange={publishWorldPosition} onClearScenario={() => setDecisionScenario(null)} onBack={() => setScene("map")} onOpenMission={() => setScene("room")} /></>;
+  if (scene === "world") return <>{realtimeLayer}<WorldExplorer playerId={roomActor.id} alias={actor.alias} role={actor.role} caseStudy={selectedCase} scenario={decisionScenario} remotePlayers={remotePlayers} onPositionChange={publishWorldPosition} realtimeConnected={realtime.connected} realtimeStatus={realtime.status} onClearScenario={() => setDecisionScenario(null)} onBack={() => setScene("map")} onOpenMission={() => setScene("room")} /></>;
   if (scene === "map") return <>{realtimeLayer}<VoxelGateway key={casesReady ? caseFeed.updatedAt || "fallback" : "loading"} cases={caseFeed.cases} loading={!casesReady} onEnter={caseStudy => { setSelectedCase(caseStudy); setRemotePlayers([]); setDecisionScenario(null); setScene("world"); }} /></>;
 
   return (
