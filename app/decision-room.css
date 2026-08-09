@@ -112,3 +112,10 @@
 .hud-drawer::-webkit-scrollbar{width:9px}
 .hud-drawer::-webkit-scrollbar-track{background:transparent}
 .hud-drawer::-webkit-scrollbar-thumb{border:2px solid #f4f5ed;border-radius:12px;background:#83958d}
+
+/* Fixed drawers use a normal document flow so Chrome always creates real vertical overflow. */
+.hud-drawer{bottom:auto!important;display:block!important;height:calc(100vh - 96px);height:calc(100dvh - 96px);max-height:calc(100vh - 96px);max-height:calc(100dvh - 96px);overflow-x:hidden!important;overflow-y:scroll!important;-webkit-overflow-scrolling:touch}
+.hud-drawer>.hud-drawer-head{margin-bottom:12px}
+.hud-drawer>:not(.hud-drawer-head)+*{margin-top:12px}
+.hud-drawer-right .community-chat .chat-feed,.hud-drawer-right .bridge-slide{max-height:none;overflow:visible}
+@media(max-width:640px){.hud-drawer{height:calc(100vh - 126px);height:calc(100dvh - 126px);max-height:calc(100vh - 126px);max-height:calc(100dvh - 126px)}}
