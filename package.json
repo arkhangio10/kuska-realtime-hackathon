@@ -1,0 +1,36 @@
+{
+  "name": "kuska",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:collaboration": "vitest run lib/realtime-events.test.ts",
+    "test:portal": "node --env-file=.env.local scripts/portal-multiplayer-smoke.mjs"
+  },
+  "dependencies": {
+    "@portalsdk/core": "^0.1.5",
+    "@portalsdk/react": "^0.1.4",
+    "next": "^16.3.0",
+    "openai": "^6.16.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "three": "^0.185.1",
+    "zod": "^4.1.0"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "^3.3.1",
+    "@types/node": "^22.10.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@types/three": "^0.185.4",
+    "eslint": "^9.0.0",
+    "eslint-config-next": "^16.3.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  }
+}
