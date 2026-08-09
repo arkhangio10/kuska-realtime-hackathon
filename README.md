@@ -18,7 +18,7 @@ KUSKA reúne esas capas en una sola misión:
 - organiza evidencia oficial, humanitaria, satelital y periodística;
 - incorpora perspectivas humanas y agentes de demostración claramente etiquetados;
 - usa IA para proponer alternativas trazables, no para tomar la decisión;
-- sincroniza conversación, propuestas y votos con Portal;
+- sincroniza avatares, conversación, propuestas, alternativas de IA y votos con Portal;
 - traduce la opción elegida a una escena voxel para hacer visibles sus acciones, beneficios, riesgos y supuestos.
 
 ## Flujo de la experiencia
@@ -36,12 +36,14 @@ La escena final es una herramienta de comunicación y deliberación. **No predic
 Portal es la capa multijugador de KUSKA. Cada caso utiliza una sala aislada y sincroniza:
 
 - presencia de participantes;
+- posición y orientación de avatares remotos dentro del territorio 3D;
 - propuestas comunitarias;
+- alternativas generadas por IA que una persona comparte con la sala;
 - apoyos y preocupaciones;
 - conversación del lugar;
 - historial para participantes que llegan después.
 
-La identidad de cada evento se vincula al remitente verificado por Portal. Los eventos se validan con Zod, se deduplican por `eventId` y se mantienen debajo del límite de mensajes del SDK. Si no existe `NEXT_PUBLIC_PORTAL_API_KEY`, la aplicación funciona en un modo local indicado explícitamente en la interfaz.
+La identidad de cada evento se vincula al remitente verificado por Portal. La colaboración persistente y el movimiento espacial usan canales separados por caso: quienes llegan tarde recuperan acuerdos, mientras que los avatares reciben únicamente posiciones actuales. Los eventos se validan con Zod, se deduplican por `eventId` y se mantienen debajo del límite de mensajes del SDK. Si no existe `NEXT_PUBLIC_PORTAL_API_KEY`, la aplicación funciona en un modo local indicado explícitamente en la interfaz.
 
 Más detalles: [docs/PORTAL.md](docs/PORTAL.md).
 
@@ -85,8 +87,8 @@ GDACS · IFRC GO · Open-Meteo · USGS · NASA · GDELT · ReliefWeb
                               │
               ┌───────────────┴───────────────┐
               ▼                               ▼
-   Portal: presencia y eventos       OpenAI: alternativas y
-   colaborativos en tiempo real      plan de escena validado
+   Portal: avatares, alternativas    OpenAI: alternativas y
+   y acuerdos en tiempo real         plan de escena validado
               │                               │
               └───────────────┬───────────────┘
                               ▼
@@ -168,7 +170,11 @@ npm run dev
 npm run test:portal
 ```
 
-El smoke test abre cuatro clientes aislados por caso, comprueba presencia, entrega de propuestas, votos y convergencia del estado sin escribir en las salas normales de la demo.
+El smoke test abre cuatro clientes aislados por caso y comprueba presencia, movimiento espacial, entrega de propuestas, sincronización de alternativas de IA, votos y convergencia del estado sin escribir en las salas normales de la demo.
+
+## Equipo
+
+**SOINAR** — Abel Brayan Mancilla Montesinos.
 
 ## Privacidad, seguridad y límites
 
