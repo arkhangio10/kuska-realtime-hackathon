@@ -96,3 +96,12 @@
 @media(max-width:900px){.decision-result{grid-template-columns:1fr}.decision-result-copy h3{white-space:normal}.decision-result-stats{padding:0;border:0}.decision-close-button{width:100%}}
 @media(max-width:640px){.decision-result{gap:11px;padding:12px}.decision-result-stats{justify-content:space-between}.decision-confirm-backdrop{place-items:end center;padding:8px}.decision-confirm{max-height:calc(100svh - 16px);overflow:auto;padding:19px;border-radius:16px}.decision-confirm h2{font-size:22px}.decision-confirm footer{display:grid;grid-template-columns:1fr 1fr}}
 @media(prefers-reduced-motion:reduce){.decision-confirm-backdrop,.decision-confirm{animation:none}}
+
+/* The evidence drawer must size every card from its content. Long locations and event titles cannot be clipped. */
+.hud-drawer{grid-template-columns:minmax(0,1fr)!important;grid-auto-rows:max-content}
+.hud-drawer .case-command{height:auto;min-height:max-content}
+.hud-drawer .case-command-title{align-items:flex-start}
+.hud-drawer .case-command-title>span{flex:0 0 44px}
+.hud-drawer .case-command-title>div{position:relative;z-index:1;min-width:0;flex:1}
+.hud-drawer .case-command-title h2{line-height:1.08;overflow-wrap:anywhere}
+.hud-drawer .verification-line,.hud-drawer .event-title,.hud-drawer .freshness,.hud-drawer .source-button{position:relative;z-index:1}
