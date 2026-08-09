@@ -6,6 +6,8 @@ KUSKA es una experiencia colaborativa en tiempo real para explorar desastres nat
 
 Repositorio oficial de **The Realtime Hackathon by Portal**: [arkhangio10/kuska-realtime-hackathon](https://github.com/arkhangio10/kuska-realtime-hackathon)
 
+**Demo en producción:** [kuska-realtime-hackathon.vercel.app](https://kuska-realtime-hackathon.vercel.app/)
+
 ## El problema
 
 Durante una emergencia, las alertas, noticias y opiniones locales llegan desde fuentes distintas. Esto dificulta entender qué está confirmado, qué falta validar y qué respuesta puede ejecutar realmente una comunidad.
@@ -184,6 +186,7 @@ El smoke test abre cuatro clientes aislados por caso, comprueba presencia, entre
 - [Alertas y fuentes](docs/ALERTS.md)
 - [Guion de demostración](docs/DEMO_SCRIPT.md)
 - [Prueba para jueces](docs/JUDGE_TEST.md)
+- [Checklist de entrega](docs/SUBMISSION_CHECKLIST.md)
 
 ---
 
