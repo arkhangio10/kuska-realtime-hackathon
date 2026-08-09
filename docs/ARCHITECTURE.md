@@ -22,6 +22,7 @@ Cada emergencia usa dos canales aislados por `caseId`:
 - `proposal.created`: aportes creados por personas;
 - `alternative.created`: alternativas de IA promovidas por una persona a la sala;
 - `vote.cast`: apoyo, preocupación o abstención humana;
+- `decision.closed`: opción confirmada después de resolver participación, empates y preocupaciones;
 - `chat.created`: conversación breve del lugar;
 - presencia con `alias`, `role` y `kind`.
 

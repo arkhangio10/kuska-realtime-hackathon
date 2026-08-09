@@ -9,6 +9,7 @@ import {
   Proposal,
   proposalInput,
   proposalTallies,
+  resolveDecision,
   roles,
   score,
   seedProposals,
@@ -32,6 +33,7 @@ import type { RemoteWorldPlayer, SpatialEvent, WorldPosition } from "@/lib/realt
 const aliasList = ["Río Claro", "Algarrobo", "Luz Norte", "Marea Verde", "Sol Andino"];
 const uid = () => crypto.randomUUID();
 const sharedAlternativeId = (prefix: "bridge" | "candidate", caseId: string, actorId: string, optionId = "") => `${prefix}-${caseId.replace(/[^a-z0-9-]/gi, "").slice(0, 34)}-${actorId.replace(/[^a-z0-9-]/gi, "").slice(-12)}${optionId ? `-${optionId.replace(/[^a-z0-9-]/gi, "").slice(0, 14)}` : ""}`.slice(0, 80);
+type ClosedDecision = { proposalId: string; agree: number; concern: number; participantCount: number; eligibleCount: number };
 
 const urgencyCopy: Record<CaseStudy["severity"], { label: string; action: string }> = {
   info: { label: "Seguimiento", action: "Verificar cambios antes de movilizar recursos." },
@@ -82,6 +84,12 @@ function proposalStatus(agree: number, concern: number) {
   return "Opinión dividida";
 }
 
+function proposalHeadline(proposal?: Proposal) {
+  if (!proposal) return "Todavía no hay una opción líder";
+  const firstSentence = proposal.text.split(/[.!?…]/u)[0]?.trim() || proposal.text.trim();
+  return firstSentence.length > 88 ? `${firstSentence.slice(0, 85).trimEnd()}…` : firstSentence;
+}
+
 export function KuskaMission() {
   const [scene, setScene] = useState<"map" | "world" | "room">("map");
   const [actor] = useState(() => ({ id: uid(), alias: aliasList[Math.floor(Math.random() * aliasList.length)], role: roles[Math.floor(Math.random() * roles.length)], kind: "human" as const }));
@@ -111,6 +119,8 @@ export function KuskaMission() {
   const [hudPanel, setHudPanel] = useState<"evidence" | "room" | null>(null);
   const [workspaceView, setWorkspaceView] = useState<"case" | "solutions" | "vote">("case");
   const [proposalPage, setProposalPage] = useState(0);
+  const [closedDecision, setClosedDecision] = useState<ClosedDecision | null>(null);
+  const [decisionConfirmOpen, setDecisionConfirmOpen] = useState(false);
   const [decisionScenario, setDecisionScenario] = useState<DecisionScenario | null>(null);
   const [scenePlanProposalId, setScenePlanProposalId] = useState<string | null>(null);
   const [agentStatus, setAgentStatus] = useState<"idle" | "working">("idle");
@@ -174,7 +184,7 @@ export function KuskaMission() {
   }, []);
 
   useEffect(() => {
-    const closeDrawer = (event: KeyboardEvent) => { if (event.key === "Escape") setHudPanel(null); };
+    const closeDrawer = (event: KeyboardEvent) => { if (event.key === "Escape") { setHudPanel(null); setDecisionConfirmOpen(false); } };
     window.addEventListener("keydown", closeDrawer);
     return () => window.removeEventListener("keydown", closeDrawer);
   }, []);
@@ -197,8 +207,12 @@ export function KuskaMission() {
   const representedRoles = new Set(participants.filter(person => person.kind === "human").map(participant => participant.role));
   const representation = Math.round(representedRoles.size / roles.length * 100);
   const missingRoles = roles.filter(role => !representedRoles.has(role));
-  const ranked = [...humanTallies].sort((a, b) => (b.agree - b.concern) - (a.agree - a.concern));
-  const topProposalId = ranked[0] && ranked[0].agree + ranked[0].concern > 0 ? ranked[0].proposalId : null;
+  const decisionOutcome = useMemo(() => resolveDecision(proposals, humanVotes, [...humanIds]), [humanIds, humanVotes, proposals]);
+  const outcomeProposal = proposals.find(proposal => proposal.id === decisionOutcome.proposalId);
+  const outcomeNeedsRegeneration = Boolean(outcomeProposal?.author.kind === "agent" && !hasCompleteSentence(outcomeProposal.text));
+  const closedProposal = proposals.find(proposal => proposal.id === closedDecision?.proposalId);
+  const provisionalLeaderId = decisionOutcome.status === "leading" || decisionOutcome.status === "ready" ? decisionOutcome.proposalId : null;
+  const remainingVoters = Math.max(decisionOutcome.eligibleCount - decisionOutcome.participantCount, 0);
   const decisionQuestions = questionsByHazard[selectedCase.hazardKind] ?? defaultQuestions;
   const urgency = urgencyCopy[selectedCase.severity];
   const promotedSolutions = proposals.filter(item => item.id.startsWith("candidate-")).length;
@@ -222,10 +236,24 @@ export function KuskaMission() {
   }
 
   function vote(proposalId: string, value: Vote) {
+    if (closedDecision) { setNote("La votación ya fue cerrada. La decisión seleccionada permanece visible para toda la sala."); return; }
     const record = { proposalId, actorId: roomActor.id, value };
     setVotes(current => [...current.filter(item => !(item.proposalId === proposalId && item.actorId === roomActor.id)), record]);
     void realtimeRef.current?.publish({ eventId: uid(), kind: "vote.cast", createdAt: new Date().toISOString(), actor: roomActor, vote: record });
     setNote("Tu reacción actualizó el estado de la decisión.");
+  }
+
+  function closeDecision() {
+    if (decisionOutcome.status !== "ready" || !decisionOutcome.proposalId) return;
+    const proposal = proposals.find(item => item.id === decisionOutcome.proposalId);
+    if (!proposal) return;
+    const result = { proposalId: proposal.id, agree: decisionOutcome.agree, concern: decisionOutcome.concern, participantCount: decisionOutcome.participantCount, eligibleCount: decisionOutcome.eligibleCount };
+    setClosedDecision(result);
+    const selectedIndex = orderedProposals.findIndex(item => item.id === proposal.id);
+    if (selectedIndex >= 0) setProposalPage(selectedIndex);
+    setDecisionConfirmOpen(false);
+    setNote(`Decisión confirmada: “${proposalHeadline(proposal)}”. Ya puede probarse en el territorio.`);
+    void realtimeRef.current?.publish({ eventId: uid(), kind: "decision.closed", createdAt: new Date().toISOString(), actor: roomActor, ...result });
   }
 
   function submit(event: FormEvent) {
@@ -261,10 +289,18 @@ export function KuskaMission() {
     if (event.kind === "vote.cast" && event.vote && event.vote.actorId === event.actor.id) {
       setVotes(current => [...current.filter(item => !(item.proposalId === event.vote?.proposalId && item.actorId === event.vote?.actorId)), event.vote!]);
     }
+    if (event.kind === "decision.closed") {
+      setClosedDecision({ proposalId: event.proposalId, agree: event.agree, concern: event.concern, participantCount: event.participantCount, eligibleCount: event.eligibleCount });
+      const selectedIndex = orderedProposals.findIndex(proposal => proposal.id === event.proposalId);
+      if (selectedIndex >= 0) setProposalPage(selectedIndex);
+      setDecisionConfirmOpen(false);
+      setWorkspaceView("vote");
+      setNote(`${event.actor.alias} cerró la votación. La decisión seleccionada ya puede probarse en el territorio.`);
+    }
     if (event.kind === "chat.created" && event.chat) {
       setChat(current => current.some(item => item.id === event.chat?.id) ? current : [...current, event.chat!]);
     }
-  }, []);
+  }, [orderedProposals]);
 
   const applySpatialEvent = useCallback((event: SpatialEvent) => {
     if (event.actor.id === realtimeSelfIdRef.current) return;
@@ -377,7 +413,7 @@ export function KuskaMission() {
 
   const realtimeLayer = <RealtimeRoom ref={realtimeRef} caseId={selectedCase.id} actor={actor} onEvent={applyRealtimeEvent} onSpatialEvent={applySpatialEvent} onState={applyRealtimeState} />;
   if (scene === "world") return <>{realtimeLayer}<WorldExplorer playerId={roomActor.id} alias={actor.alias} role={actor.role} caseStudy={selectedCase} scenario={decisionScenario} remotePlayers={remotePlayers} onPositionChange={publishWorldPosition} realtimeConnected={realtime.connected} realtimeStatus={realtime.status} onClearScenario={() => setDecisionScenario(null)} onBack={() => setScene("map")} onOpenMission={() => setScene("room")} /></>;
-  if (scene === "map") return <>{realtimeLayer}<VoxelGateway key={casesReady ? caseFeed.updatedAt || "fallback" : "loading"} cases={caseFeed.cases} loading={!casesReady} onEnter={caseStudy => { setSelectedCase(caseStudy); setRemotePlayers([]); setDecisionScenario(null); setScene("world"); }} /></>;
+  if (scene === "map") return <>{realtimeLayer}<VoxelGateway key={casesReady ? caseFeed.updatedAt || "fallback" : "loading"} cases={caseFeed.cases} loading={!casesReady} onEnter={caseStudy => { setSelectedCase(caseStudy); setRemotePlayers([]); setDecisionScenario(null); setClosedDecision(null); setDecisionConfirmOpen(false); setScene("world"); }} /></>;
 
   return (
     <>{realtimeLayer}<main className="mission-room">
@@ -390,7 +426,7 @@ export function KuskaMission() {
           <button className={hudPanel === "room" ? "active" : ""} aria-controls="room-drawer" aria-expanded={hudPanel === "room"} onClick={() => setHudPanel(current => current === "room" ? null : "room")}><i>◉</i>Sala <span>{Math.max(realtime.people, 1)}</span></button>
         </nav>
         <div className="live"><i /> Caso {selectedCase.dataState === "live" ? "en vivo" : selectedCase.dataState === "recent" ? "reciente" : "preventivo"} · {selectedCase.country} · {realtime.connected ? `${Math.max(realtime.people, 1)} en sala` : "demo local"}</div>
-        <button className="quiet" onClick={() => { setProposals(seedProposals); setVotes(seedVotes); setBridge(null); setProposalPage(0); setWorkspaceView("case"); setNote("Modo demo reiniciado."); }}>Reiniciar demo</button>
+        <button className="quiet" onClick={() => { setProposals(seedProposals); setVotes(seedVotes); setBridge(null); setClosedDecision(null); setDecisionConfirmOpen(false); setProposalPage(0); setWorkspaceView("case"); setNote("Modo demo reiniciado."); }}>Reiniciar demo</button>
       </header>
 
       {hudPanel && <button className="hud-scrim" aria-label="Cerrar panel" onClick={() => setHudPanel(null)} />}
@@ -404,6 +440,18 @@ export function KuskaMission() {
         </section>
       </div>}
       {analysis === "working" && !analysisModalOpen && <button className="analysis-dock" onClick={() => setAnalysisModalOpen(true)}><i /> KUSKA está analizando <span>Ver progreso</span></button>}
+      {decisionConfirmOpen && decisionOutcome.status === "ready" && outcomeProposal && <div className="decision-confirm-backdrop" onMouseDown={event => { if (event.currentTarget === event.target) setDecisionConfirmOpen(false); }}>
+        <section className="decision-confirm" role="dialog" aria-modal="true" aria-labelledby="decision-confirm-title" aria-describedby="decision-confirm-description">
+          <span className="decision-confirm-icon">✓</span>
+          <p className="eyebrow">REVISIÓN FINAL</p>
+          <h2 id="decision-confirm-title">¿Cerrar la votación con esta decisión?</h2>
+          <strong>{proposalHeadline(outcomeProposal)}</strong>
+          <div className="decision-confirm-numbers"><span><b>{decisionOutcome.agree}</b> apoyos</span><span><b>{decisionOutcome.concern}</b> preocupaciones</span><span><b>{decisionOutcome.participantCount} de {decisionOutcome.eligibleCount}</b> personas</span></div>
+          <p id="decision-confirm-description">El resultado usa únicamente votos humanos. Después de confirmar, la sala verá la misma decisión seleccionada y podrá probarla en el territorio.</p>
+          {decisionOutcome.eligibleCount === 1 && <small>Este 100 % representa un voto de una persona conectada; no significa consenso de una comunidad más amplia.</small>}
+          <footer><button onClick={() => setDecisionConfirmOpen(false)}>Seguir revisando</button><button autoFocus className="primary" onClick={closeDecision}>Confirmar decisión</button></footer>
+        </section>
+      </div>}
       <div className="shell decision-shell hud-layout">
         <nav className="workspace-tabs" aria-label="Etapas de la mesa de acuerdos">
           <button className={workspaceView === "case" ? "active" : ""} aria-pressed={workspaceView === "case"} onClick={() => setWorkspaceView("case")}><span>1</span><b>Caso</b><small>Entender</small></button>
@@ -505,7 +553,17 @@ export function KuskaMission() {
           {workspaceView === "solutions" && !bridge && <section className="empty-stage workspace-panel"><div className="empty-stage-icon">◇</div><p className="eyebrow">ALTERNATIVAS</p><h2>Generar opciones con evidencia</h2><p>KUSKA cruzará fuentes y aportes de la sala. Tú decides cuál pasa a votación.</p><div className="empty-stage-stats"><span><b>{evidenceBundle?.items.length ?? 0}</b> evidencias</span><span><b>{proposals.filter(item => !item.bridge).length}</b> aportes</span><span><b>{chat.length}</b> preguntas</span></div><button className="primary" disabled={analysis === "working" || analysisCooldown > 0 || !evidenceBundle} onClick={analyze}>{analysis === "working" ? "Analizando…" : analysisCooldown > 0 ? `Reintentar en ${analysisCooldown}s` : "Generar alternativas"}</button></section>}
 
           {workspaceView === "vote" && <><div className="stream workspace-panel" id="response-options">
-            <div className="sectionhead"><div><p className="eyebrow">ETAPA 3 · VOTACIÓN</p><h2>Una opción a la vez</h2></div><div className="proposal-pager"><button aria-label="Propuesta anterior" onClick={() => setProposalPage(value => (value - 1 + orderedProposals.length) % orderedProposals.length)}>←</button><span>{visibleProposalPage + 1} de {orderedProposals.length}</span><button aria-label="Propuesta siguiente" onClick={() => setProposalPage(value => (value + 1) % orderedProposals.length)}>→</button></div></div>
+            <div className="sectionhead"><div><p className="eyebrow">ETAPA 3 · VOTACIÓN</p><h2>{closedProposal ? "Decisión de la sala" : "Una opción a la vez"}</h2></div><div className="proposal-pager"><button aria-label="Propuesta anterior" onClick={() => setProposalPage(value => (value - 1 + orderedProposals.length) % orderedProposals.length)}>←</button><span>{visibleProposalPage + 1} de {orderedProposals.length}</span><button aria-label="Propuesta siguiente" onClick={() => setProposalPage(value => (value + 1) % orderedProposals.length)}>→</button></div></div>
+            <section className={`decision-result ${closedProposal ? "closed" : decisionOutcome.status}`} aria-live="polite">
+              <div className="decision-result-copy">
+                <p className="eyebrow">{closedProposal ? "DECISIÓN SELECCIONADA" : decisionOutcome.status === "ready" ? "LISTA PARA CONFIRMAR" : decisionOutcome.status === "tie" ? "EMPATE PROVISIONAL" : decisionOutcome.status === "concerns" ? "REQUIERE REVISIÓN" : "VOTACIÓN ABIERTA"}</p>
+                <h3>{closedProposal ? proposalHeadline(closedProposal) : decisionOutcome.status === "waiting" ? "Aún no hay votos humanos" : decisionOutcome.status === "tie" ? `${decisionOutcome.tiedProposalIds.length} opciones tienen el mismo apoyo neto` : proposalHeadline(outcomeProposal)}</h3>
+                <p>{closedProposal && closedDecision ? `La sala cerró esta decisión con ${closedDecision.agree} apoyos y ${closedDecision.concern} preocupaciones. Participaron ${closedDecision.participantCount} de ${closedDecision.eligibleCount} personas.` : decisionOutcome.status === "waiting" ? `Participaron 0 de ${decisionOutcome.eligibleCount} personas. Apoya una opción o señala una preocupación para comenzar.` : decisionOutcome.status === "leading" ? `Lidera por ahora. Participaron ${decisionOutcome.participantCount} de ${decisionOutcome.eligibleCount} personas; ${remainingVoters === 1 ? "falta 1 participación" : `faltan ${remainingVoters} participaciones`} antes de cerrar.` : decisionOutcome.status === "tie" ? "La sala necesita otra reacción o diálogo para distinguir una opción. Ninguna se declara ganadora." : decisionOutcome.status === "concerns" ? `La opción mejor ubicada tiene ${decisionOutcome.agree} apoyos y ${decisionOutcome.concern} preocupaciones. Debe revisarse antes de cerrar.` : `Ya participaron ${decisionOutcome.participantCount} de ${decisionOutcome.eligibleCount} personas. Revisa el resultado antes de confirmarlo.`}</p>
+              </div>
+              <div className="decision-result-stats"><span><b>{closedDecision ? closedDecision.agree : outcomeProposal ? decisionOutcome.agree : 0}</b> apoyos humanos</span><span><b>{closedDecision ? closedDecision.concern : outcomeProposal ? decisionOutcome.concern : 0}</b> preocupaciones</span><span><b>{closedDecision ? `${closedDecision.participantCount}/${closedDecision.eligibleCount}` : `${decisionOutcome.participantCount}/${decisionOutcome.eligibleCount}`}</b> participación</span></div>
+              {!closedProposal && decisionOutcome.status === "ready" && <button className="decision-close-button" disabled={outcomeNeedsRegeneration || Boolean(scenePlanProposalId)} onClick={() => outcomeNeedsRegeneration ? void analyze() : setDecisionConfirmOpen(true)}>{outcomeNeedsRegeneration ? "Regenerar antes de cerrar" : "Revisar y cerrar votación"}</button>}
+              {closedProposal && <button className="decision-close-button" disabled={Boolean(scenePlanProposalId)} onClick={() => simulateDecision(closedProposal)}>{scenePlanProposalId === closedProposal.id ? "Preparando territorio…" : "Probar decisión en el territorio →"}</button>}
+            </section>
             {visibleProposals.map(proposal => {
               const tally = humanTallies.find(item => item.proposalId === proposal.id) ?? { agree: 0, concern: 0, pass: 0 };
               const demoTally = demoTallies.find(item => item.proposalId === proposal.id) ?? { agree: 0, concern: 0, pass: 0 };
@@ -515,13 +573,14 @@ export function KuskaMission() {
               const pendingVotes = Math.max(eligibleVoters - evaluated, 0);
               const myVote = uniqueVotes.find(item => item.proposalId === proposal.id && item.actorId === roomActor.id)?.value;
               const incompleteAiText = proposal.author.kind === "agent" && !hasCompleteSentence(proposal.text);
-              return <article className={proposal.bridge ? "proposal bridge decision-proposal" : "proposal decision-proposal"} key={proposal.id}>
-                <div className="proposal-top"><div className="proposer"><span className={proposal.author.kind} /><div><b>{proposal.author.alias}</b><small>{proposal.bridge ? proposal.generation === "fallback" ? "Puente de contingencia · reglas" : "Propuesta puente · IA" : proposal.author.role}</small></div></div><div className="proposal-badges">{topProposalId === proposal.id && <span className="leader-badge">Mayor apoyo neto</span>}<span>{proposal.bridge ? "Síntesis" : proposalStatus(tally.agree, tally.concern)}</span></div></div>
+              const isClosedWinner = closedDecision?.proposalId === proposal.id;
+              return <article className={`${proposal.bridge ? "proposal bridge decision-proposal" : "proposal decision-proposal"}${isClosedWinner ? " selected-decision" : ""}`} key={proposal.id}>
+                <div className="proposal-top"><div className="proposer"><span className={proposal.author.kind} /><div><b>{proposal.author.alias}</b><small>{proposal.bridge ? proposal.generation === "fallback" ? "Puente de contingencia · reglas" : "Propuesta puente · IA" : proposal.author.role}</small></div></div><div className="proposal-badges">{isClosedWinner ? <span className="winner-badge">Decisión seleccionada</span> : provisionalLeaderId === proposal.id && <span className="leader-badge">Lidera por ahora</span>}<span>{proposal.bridge ? "Síntesis" : proposalStatus(tally.agree, tally.concern)}</span></div></div>
                 <p>{proposal.text}</p>
                 {incompleteAiText && <small className="proposal-text-warning">La IA devolvió una frase incompleta. Regenera la alternativa antes de simularla.</small>}
                 {proposal.basedOn && <small className="based">Integra {proposal.basedOn.length} propuestas existentes</small>}
                 <div className="proposal-evidence"><div><span>Apoyo de la sala</span><b>{roomSupport}%</b></div><div className="proposal-track"><i style={{ width: `${roomSupport}%` }} /></div><small>{tally.agree} de {eligibleVoters} personas apoyan · {tally.concern} preocupaciones · {pendingVotes} pendientes<br />Simulación: {demoTally.agree} apoyos · {demoTally.concern} preocupaciones</small></div>
-                <div className="actions"><button onClick={() => vote(proposal.id, "agree")} aria-pressed={myVote === "agree"} className={myVote === "agree" ? "selected" : ""}>✓ Apoyar <b>{tally.agree}</b></button><button onClick={() => vote(proposal.id, "concern")} aria-pressed={myVote === "concern"} className={myVote === "concern" ? "selected concern" : ""}>! Señalar preocupación <b>{tally.concern}</b></button><button className={`simulate-impact ${scenePlanProposalId === proposal.id ? "is-planning" : ""}`} aria-busy={scenePlanProposalId === proposal.id} aria-live="polite" disabled={incompleteAiText ? analysis === "working" || analysisCooldown > 0 : myVote !== "agree" || Boolean(scenePlanProposalId)} onClick={() => incompleteAiText ? void analyze() : simulateDecision(proposal)}>{incompleteAiText ? analysis === "working" ? "Regenerando…" : "Regenerar texto completo" : scenePlanProposalId === proposal.id ? <><span className="scene-planning-label"><i />Traduciendo la decisión al territorio…</span><small>Relacionando acciones, señales y riesgos visibles</small></> : myVote === "agree" ? "Probar en el territorio →" : "Apoya para probar"}</button></div>
+                <div className="actions"><button disabled={Boolean(closedDecision)} onClick={() => vote(proposal.id, "agree")} aria-pressed={myVote === "agree"} className={myVote === "agree" ? "selected" : ""}>✓ Apoyar <b>{tally.agree}</b></button><button disabled={Boolean(closedDecision)} onClick={() => vote(proposal.id, "concern")} aria-pressed={myVote === "concern"} className={myVote === "concern" ? "selected concern" : ""}>! Señalar preocupación <b>{tally.concern}</b></button></div>
               </article>;
             })}
           </div>

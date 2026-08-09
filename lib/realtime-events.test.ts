@@ -85,4 +85,13 @@ describe("Portal realtime collaboration", () => {
     expect(state.proposals).toEqual([event.proposal]);
     expect(portalPayloadBytes(event)).toBeLessThan(PORTAL_EVENT_MAX_BYTES);
   });
+
+  it("shares the closed decision so every replica keeps the same winner", () => {
+    const event: RealtimeEvent = { eventId: "decision-closed-1", kind: "decision.closed", createdAt: new Date().toISOString(), actor: actor(users[0]), proposalId: "candidate-shared-1", agree: 2, concern: 0, participantCount: 2, eligibleCount: 2 };
+    const normalized = normalizePortalEvent(event, users[0].senderId);
+    expect(normalized?.actor.id).toBe("portal-ana");
+    const state = normalized ? applyCollaborationEvent(emptyState(), normalized) : emptyState();
+    expect(state.closedDecision).toEqual({ proposalId: "candidate-shared-1", agree: 2, concern: 0, participantCount: 2, eligibleCount: 2 });
+    expect(portalPayloadBytes(event)).toBeLessThan(PORTAL_EVENT_MAX_BYTES);
+  });
 });

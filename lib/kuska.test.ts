@@ -6,6 +6,7 @@ import {
   demoActors,
   hasCompleteSentence,
   proposalTallies,
+  resolveDecision,
   score,
   seedProposals,
   wordCount,
@@ -36,6 +37,36 @@ describe("lógica de terreno común", () => {
       { proposalId: "p-rutas", agree: 0, concern: 1, pass: 0 },
       { proposalId: "p-comercio", agree: 1, concern: 0, pass: 0 },
     ]);
+  });
+});
+
+describe("cierre de la decisión", () => {
+  const options = [{ id: "route" }, { id: "shelter" }];
+  const people = ["ana", "luz"];
+
+  it("keeps a one-person result provisional when two people are eligible", () => {
+    expect(resolveDecision(options, [{ proposalId: "route", actorId: "ana", value: "agree" }], people)).toMatchObject({ status: "leading", proposalId: "route", participantCount: 1, eligibleCount: 2, agree: 1 });
+  });
+
+  it("allows closing only after all eligible people participate", () => {
+    expect(resolveDecision(options, [
+      { proposalId: "route", actorId: "ana", value: "agree" },
+      { proposalId: "route", actorId: "luz", value: "agree" },
+    ], people)).toMatchObject({ status: "ready", proposalId: "route", participantCount: 2, agree: 2, concern: 0 });
+  });
+
+  it("does not declare a winner when net support is tied", () => {
+    expect(resolveDecision(options, [
+      { proposalId: "route", actorId: "ana", value: "agree" },
+      { proposalId: "shelter", actorId: "luz", value: "agree" },
+    ], people)).toMatchObject({ status: "tie", tiedProposalIds: ["route", "shelter"] });
+  });
+
+  it("requires revision when concerns cancel the support", () => {
+    expect(resolveDecision(options, [
+      { proposalId: "route", actorId: "ana", value: "agree" },
+      { proposalId: "route", actorId: "luz", value: "concern" },
+    ], people)).toMatchObject({ status: "concerns", proposalId: "route", net: 0 });
   });
 });
 

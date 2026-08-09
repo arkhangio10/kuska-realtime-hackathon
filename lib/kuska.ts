@@ -10,8 +10,19 @@ export type Actor=z.infer<typeof actorSchema>;
 export type Vote = "agree" | "concern" | "pass";
 export type Proposal = { id: string; text: string; author: Actor; createdAt: string; bridge?: boolean; basedOn?: string[]; generation?: "openai" | "fallback" };
 export type VoteRecord = { proposalId: string; actorId: string; value: Vote };
+export type DecisionOutcomeStatus = "waiting" | "leading" | "tie" | "concerns" | "ready";
+export type DecisionOutcome = {
+  status: DecisionOutcomeStatus;
+  proposalId: string | null;
+  participantCount: number;
+  eligibleCount: number;
+  agree: number;
+  concern: number;
+  net: number;
+  tiedProposalIds: string[];
+};
 
-export const eventSchema = z.object({schema:z.literal(1),eventId:z.string().min(1),kind:z.enum(["proposal.created","vote.cast","bridge.created","action-plan.created","reaction.pulse","chat.created"]),missionId:z.string().min(1).max(100),createdAt:z.string()});
+export const eventSchema = z.object({schema:z.literal(1),eventId:z.string().min(1),kind:z.enum(["proposal.created","alternative.created","vote.cast","decision.closed","bridge.created","action-plan.created","reaction.pulse","chat.created"]),missionId:z.string().min(1).max(100),createdAt:z.string()});
 export const proposalInput = z.string().trim().min(12,"Escribe al menos 12 caracteres.").max(280,"Máximo 280 caracteres.");
 
 export const bridgeSchema=z.object({
@@ -55,6 +66,22 @@ export type BridgeRequest=z.infer<typeof bridgeRequestSchema>;
 export function dedupeVotes(votes:VoteRecord[]){const unique=new Map<string,VoteRecord>();for(const vote of votes)unique.set(`${vote.proposalId}:${vote.actorId}`,vote);return [...unique.values()]}
 export function score(votes:VoteRecord[],participants:number){const unique=dedupeVotes(votes);const relevant=unique.filter(v=>v.value!=="pass");const agree=relevant.filter(v=>v.value==="agree").length;const support=relevant.length?agree/relevant.length:0;const factor=Math.min(1,new Set(unique.map(v=>v.actorId)).size/Math.max(participants,1));return Math.round((support*.7+factor*.3)*100)}
 export function proposalTallies(proposals:Pick<Proposal,"id">[],votes:VoteRecord[]){const unique=dedupeVotes(votes);return proposals.map(proposal=>{const proposalVotes=unique.filter(vote=>vote.proposalId===proposal.id);return{proposalId:proposal.id,agree:proposalVotes.filter(v=>v.value==="agree").length,concern:proposalVotes.filter(v=>v.value==="concern").length,pass:proposalVotes.filter(v=>v.value==="pass").length}})}
+export function resolveDecision(proposals:Pick<Proposal,"id">[],votes:VoteRecord[],eligibleVoterIds:string[]):DecisionOutcome{
+  const eligibleIds=[...new Set(eligibleVoterIds)];
+  const eligibleSet=new Set(eligibleIds);
+  const relevantVotes=dedupeVotes(votes).filter(vote=>eligibleSet.has(vote.actorId)&&vote.value!=="pass");
+  const participantCount=new Set(relevantVotes.map(vote=>vote.actorId)).size;
+  const tallies=proposalTallies(proposals,relevantVotes).map(tally=>({...tally,net:tally.agree-tally.concern})).filter(tally=>tally.agree+tally.concern>0).sort((a,b)=>b.net-a.net||b.agree-a.agree||a.concern-b.concern);
+  const empty={proposalId:null,participantCount,eligibleCount:eligibleIds.length,agree:0,concern:0,net:0,tiedProposalIds:[]};
+  if(!tallies.length)return{status:"waiting",...empty};
+  const leader=tallies[0];
+  const tied=tallies.filter(tally=>tally.net===leader.net).map(tally=>tally.proposalId);
+  const result={proposalId:leader.proposalId,participantCount,eligibleCount:eligibleIds.length,agree:leader.agree,concern:leader.concern,net:leader.net,tiedProposalIds:tied};
+  if(tied.length>1)return{status:"tie",...result};
+  if(leader.net<=0)return{status:"concerns",...result};
+  if(participantCount<eligibleIds.length)return{status:"leading",...result};
+  return{status:"ready",...result};
+}
 export const wordCount=(text:string)=>text.trim()?text.trim().split(/\s+/u).length:0;
 export function hasCompleteSentence(text:string){
   const value=text.trim();

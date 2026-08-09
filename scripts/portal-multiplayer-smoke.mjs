@@ -70,8 +70,10 @@ for (const caseStudy of selectedCases) {
       const vote = { eventId: `${proposalId}-vote-${index}`, kind: "vote.cast", createdAt: new Date().toISOString(), actor: { id: `client-${index}`, ...users[index], kind: "human" }, vote: { proposalId, actorId: `client-${index}`, value: index === users.length - 1 ? "concern" : "agree" } };
       await handles[index].send({ type: vote.kind, content: vote });
     }
+    const closed = { eventId: `${proposalId}-closed`, kind: "decision.closed", createdAt: new Date().toISOString(), actor: { id: "client-local", ...users[0], kind: "human" }, proposalId, agree: users.length - 1, concern: 1, participantCount: users.length, eligibleCount: users.length };
+    await handles[0].send({ type: closed.kind, content: closed });
 
-    const expectedMessages = users.length + 2;
+    const expectedMessages = users.length + 3;
     await waitFor(() => handles.every(handle => handle.messages.filter(message => !message.retracted).length >= expectedMessages), `convergencia de mensajes en ${caseStudy.country}`);
     const senderCounts = handles.map(handle => new Set(handle.messages.map(message => message.sender.id)).size);
     if (senderCounts.some(count => count < users.length)) throw new Error(`Portal no distinguió las ${users.length} identidades en ${caseStudy.country}.`);
@@ -89,5 +91,5 @@ for (const caseStudy of selectedCases) {
 }
 
 console.table(results);
-console.log(`Portal multijugador verificado: ${results.length} casos reales, ${users.length} usuarios por caso, presencia y movimiento en canal espacial.`);
+console.log(`Portal multijugador verificado: ${results.length} casos reales, ${users.length} usuarios por caso, presencia, decisión cerrada y movimiento en canal espacial.`);
 await new Promise(resolve => setTimeout(resolve, 3_500));

@@ -40,6 +40,7 @@ Portal es la capa multijugador de KUSKA. Cada caso utiliza una sala aislada y si
 - propuestas comunitarias;
 - alternativas generadas por IA que una persona comparte con la sala;
 - apoyos y preocupaciones;
+- cierre de la votación y decisión seleccionada;
 - conversación del lugar;
 - historial para participantes que llegan después.
 
@@ -170,7 +171,7 @@ npm run dev
 npm run test:portal
 ```
 
-El smoke test abre cuatro clientes aislados por caso y comprueba presencia, movimiento espacial, entrega de propuestas, sincronización de alternativas de IA, votos y convergencia del estado sin escribir en las salas normales de la demo.
+El smoke test abre cuatro clientes aislados por caso y comprueba presencia, movimiento espacial, entrega de propuestas, sincronización de alternativas de IA, votos, cierre compartido de la decisión y convergencia del estado sin escribir en las salas normales de la demo.
 
 ## Equipo
 

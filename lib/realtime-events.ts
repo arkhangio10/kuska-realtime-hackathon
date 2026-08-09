@@ -13,6 +13,7 @@ export const realtimeEventSchema = z.discriminatedUnion("kind", [
   z.object({ eventId: z.string().min(1).max(100), kind: z.literal("proposal.created"), createdAt: z.string().min(1).max(60), actor: actorSchema, proposal: proposalSchema }),
   z.object({ eventId: z.string().min(1).max(100), kind: z.literal("alternative.created"), createdAt: z.string().min(1).max(60), actor: actorSchema, proposal: alternativeProposalSchema }),
   z.object({ eventId: z.string().min(1).max(100), kind: z.literal("vote.cast"), createdAt: z.string().min(1).max(60), actor: actorSchema, vote: voteSchema }),
+  z.object({ eventId: z.string().min(1).max(100), kind: z.literal("decision.closed"), createdAt: z.string().min(1).max(60), actor: actorSchema, proposalId: z.string().min(1).max(80), agree: z.number().int().min(0).max(50), concern: z.number().int().min(0).max(50), participantCount: z.number().int().min(1).max(50), eligibleCount: z.number().int().min(1).max(50) }),
   z.object({ eventId: z.string().min(1).max(100), kind: z.literal("chat.created"), createdAt: z.string().min(1).max(60), actor: actorSchema, chat: chatSchema }),
 ]);
 
@@ -47,6 +48,7 @@ export function normalizePortalEvent(content: unknown, senderId: string): Realti
   if (parsed.data.kind === "proposal.created") return { ...parsed.data, actor, proposal: { ...parsed.data.proposal, author: actor } };
   if (parsed.data.kind === "alternative.created") return { ...parsed.data, actor };
   if (parsed.data.kind === "vote.cast") return { ...parsed.data, actor, vote: { ...parsed.data.vote, actorId: senderId } };
+  if (parsed.data.kind === "decision.closed") return { ...parsed.data, actor };
   return { ...parsed.data, actor, chat: { ...parsed.data.chat, alias: actor.alias, kind: "human" } };
 }
 
@@ -74,10 +76,12 @@ export type CollaborationState = {
   proposals: Proposal[];
   votes: VoteRecord[];
   chat: Array<{ id: string; alias: string; text: string; kind: "human" | "demo-agent" }>;
+  closedDecision?: { proposalId: string; agree: number; concern: number; participantCount: number; eligibleCount: number } | null;
 };
 
 export function applyCollaborationEvent(state: CollaborationState, event: RealtimeEvent): CollaborationState {
   if (event.kind === "proposal.created" || event.kind === "alternative.created") return { ...state, proposals: state.proposals.some(item => item.id === event.proposal.id) ? state.proposals : [...state.proposals, event.proposal] };
   if (event.kind === "vote.cast") return { ...state, votes: [...state.votes.filter(item => !(item.proposalId === event.vote.proposalId && item.actorId === event.vote.actorId)), event.vote] };
+  if (event.kind === "decision.closed") return { ...state, closedDecision: { proposalId: event.proposalId, agree: event.agree, concern: event.concern, participantCount: event.participantCount, eligibleCount: event.eligibleCount } };
   return { ...state, chat: state.chat.some(item => item.id === event.chat.id) ? state.chat : [...state.chat, event.chat] };
 }
