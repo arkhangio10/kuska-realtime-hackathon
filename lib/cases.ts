@@ -7,6 +7,11 @@ export type HazardKind =
   | "volcano"
   | "wildfire"
   | "drought"
+  | "tsunami"
+  | "storm_surge"
+  | "landslide"
+  | "heatwave"
+  | "cold_wave"
   | "chemical"
   | "biological"
   | "radiological"
@@ -17,7 +22,7 @@ export type HazardOrigin = "natural" | "human" | "undetermined";
 
 export const HAZARD_ICONS: Record<HazardKind, string> = {
   flood: "≈", earthquake: "⌁", cyclone: "◉", volcano: "▲", wildfire: "◆",
-  drought: "☀", chemical: "⚗", biological: "✣", radiological: "☢",
+  drought: "☀", tsunami: "≋", storm_surge: "∿", landslide: "◢", heatwave: "♨", cold_wave: "❄", chemical: "⚗", biological: "✣", radiological: "☢",
   transport: "▣", other: "!",
 };
 

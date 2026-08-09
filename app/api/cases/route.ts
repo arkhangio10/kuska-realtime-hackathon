@@ -16,6 +16,11 @@ const gdacsFeeds: Array<{ code: string; kind: HazardKind; label: string }> = [
 ];
 
 const ifrcTypes: Array<{ id: number; kind: HazardKind; label: string; origin: HazardOrigin }> = [
+  { id: 11, kind: "tsunami", label: "Tsunami", origin: "natural" },
+  { id: 23, kind: "storm_surge", label: "Marejada ciclónica", origin: "natural" },
+  { id: 24, kind: "landslide", label: "Deslizamiento", origin: "natural" },
+  { id: 19, kind: "heatwave", label: "Ola de calor", origin: "natural" },
+  { id: 14, kind: "cold_wave", label: "Ola de frío", origin: "natural" },
   { id: 57, kind: "chemical", label: "Emergencia química", origin: "human" },
   { id: 67, kind: "radiological", label: "Emergencia radiológica", origin: "human" },
   { id: 54, kind: "transport", label: "Accidente de transporte", origin: "human" },
@@ -53,6 +58,11 @@ function visualFor(kind: HazardKind, severity: AlertSeverity, raw = 0): HazardVi
   if (kind === "volcano") Object.assign(visual, { ash: clamp(.48 + level * .5), smoke: clamp(.5 + level * .4), fire: .2 + level * .28, shake: level * .2 });
   if (kind === "wildfire") Object.assign(visual, { fire: clamp(Math.max(level, Math.log10(Math.max(10, raw)) / 5)), smoke: clamp(.52 + level * .4), drought: .45 });
   if (kind === "drought") Object.assign(visual, { drought: clamp(.58 + level * .4), water: .04 });
+  if (kind === "tsunami") Object.assign(visual, { water: clamp(.72 + level * .27), wind: level * .22, rain: level * .12 });
+  if (kind === "storm_surge") Object.assign(visual, { water: clamp(.58 + level * .38), wind: clamp(.55 + level * .42), rain: clamp(.35 + level * .42) });
+  if (kind === "landslide") Object.assign(visual, { shake: clamp(.28 + level * .45), drought: .18, smoke: level * .12 });
+  if (kind === "heatwave") Object.assign(visual, { drought: clamp(.68 + level * .3), smoke: level * .08, water: .02 });
+  if (kind === "cold_wave") Object.assign(visual, { rain: clamp(.5 + level * .42), wind: clamp(.25 + level * .45), water: .12 });
   if (kind === "chemical") Object.assign(visual, { contamination: clamp(.6 + level * .35), smoke: .24 + level * .35 });
   if (kind === "radiological") Object.assign(visual, { contamination: clamp(.72 + level * .25), smoke: .15 });
   if (kind === "transport") Object.assign(visual, { fire: .25 + level * .45, smoke: .38 + level * .45 });

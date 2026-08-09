@@ -16,7 +16,7 @@ const requestSchema = z.object({
   caseStudy: z.object({
     id: z.string().min(1).max(180), country: z.string().min(1).max(100), location: z.string().min(1).max(160),
     eventTitle: z.string().min(1).max(300), details: z.string().max(2000), source: z.enum(["GDACS", "IFRC GO", "Open-Meteo"]),
-    hazardKind: z.enum(["flood", "earthquake", "cyclone", "volcano", "wildfire", "drought", "chemical", "biological", "radiological", "transport", "other"]),
+    hazardKind: z.enum(["flood", "earthquake", "cyclone", "volcano", "wildfire", "drought", "tsunami", "storm_surge", "landslide", "heatwave", "cold_wave", "chemical", "biological", "radiological", "transport", "other"]),
     hazardLabel: z.string().min(1).max(100), visual: visualSchema,
     metrics: z.array(z.object({ label: z.string().max(100), value: z.string().max(140), level: z.number().min(0).max(100) })).max(6),
   }),
@@ -44,7 +44,7 @@ Reglas:
 - No inventes hechos, cifras, autoridades, recursos ni resultados. Usa solo el caso, métricas y propuesta incluidos.
 - La escena ilustra una hipótesis, no predice el futuro ni declara seguridad.
 - Respeta literalmente las acciones de la propuesta. Una ruta señalizada o una red de avisos no equivale a evacuar. Solo mueve personas si la propuesta dice explícitamente evacuar, trasladar o desplazarlas.
-- Una decisión puede cambiar exposición, rutas, coordinación y objetos de respuesta. No puede detener inmediatamente lluvia, viento, sismos, réplicas, sequía, erupciones o ceniza.
+- Una decisión puede cambiar exposición, rutas, coordinación y objetos de respuesta. No puede detener inmediatamente lluvia, viento, sismos, réplicas, tsunamis, marejadas, deslizamientos, olas térmicas, sequía, erupciones o ceniza.
 - Solo "containment" puede reducir físicamente un peligro: fuego/humo en incendio o accidente, contaminación en incidente químico/biológico/radiológico, o agua en inundación. La reducción debe ser gradual y moderada.
 - Coloca rutas y puntos operativos lejos del centro de peligro aproximado (3,-2). Mantén coordenadas dentro del esquema y no atravieses el cauce central salvo por z cercano a 4.
 - Usa 2 a 5 elementos. Prefiere una ruta y un punto con función clara. Mueve como máximo tres actores y explica por qué.

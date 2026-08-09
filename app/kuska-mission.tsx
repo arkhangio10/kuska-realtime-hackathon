@@ -44,6 +44,11 @@ const questionsByHazard: Partial<Record<CaseStudy["hazardKind"], string[]>> = {
   earthquake: ["¿Qué estructuras deben evitarse?", "¿Dónde se reunirá cada sector?", "¿Quién verifica daños y servicios?"],
   wildfire: ["¿Cuál es el perímetro de seguridad?", "¿Qué dirección tiene el humo?", "¿Qué ruta oficial de evacuación está abierta?"],
   drought: ["¿Qué usos del agua son prioritarios?", "¿Qué hogares tienen menor acceso?", "¿Cómo se medirá el abastecimiento?"],
+  tsunami: ["¿Qué zona de inundación debe evitarse?", "¿Qué ruta conduce a terreno alto?", "¿Qué señal oficial activa la evacuación?"],
+  storm_surge: ["¿Qué sectores costeros están expuestos?", "¿Qué refugios están confirmados?", "¿Cuándo debe suspenderse la movilidad?"],
+  landslide: ["¿Qué laderas y vías deben aislarse?", "¿Dónde hay terreno estable confirmado?", "¿Quién evalúa nuevos movimientos?"],
+  heatwave: ["¿Quiénes necesitan enfriamiento prioritario?", "¿Dónde hay agua y sombra disponibles?", "¿Qué horario reduce la exposición?"],
+  cold_wave: ["¿Qué hogares necesitan abrigo o calefacción?", "¿Qué vías permanecen transitables?", "¿Dónde funciona la atención sanitaria?"],
   volcano: ["¿Cuál es la zona de exclusión?", "¿Cómo se protegerá a personas vulnerables?", "¿Qué rutas evitan ceniza y lahares?"],
   chemical: ["¿Cuál es el perímetro confirmado?", "¿Qué exposición debe evitarse?", "¿Qué autoridad valida el retorno?"],
   biological: ["¿Qué síntomas requieren atención?", "¿Qué información está confirmada?", "¿Cómo se protegerá la privacidad?"],
@@ -348,7 +353,7 @@ export function KuskaMission() {
           <button className={hudPanel === "evidence" ? "active" : ""} aria-controls="evidence-drawer" aria-expanded={hudPanel === "evidence"} onClick={() => setHudPanel(current => current === "evidence" ? null : "evidence")}><i>◇</i>Datos <span>{evidenceBundle?.items.length ?? "…"}</span></button>
           <button className={hudPanel === "room" ? "active" : ""} aria-controls="room-drawer" aria-expanded={hudPanel === "room"} onClick={() => setHudPanel(current => current === "room" ? null : "room")}><i>◉</i>Sala <span>{Math.max(realtime.people, 1)}</span></button>
         </nav>
-        <div className="live"><i /> Caso {selectedCase.dataState === "live" ? "en vivo" : "actualizado"} · {selectedCase.country} · {realtime.connected ? `${Math.max(realtime.people, 1)} en sala` : "demo local"}</div>
+        <div className="live"><i /> Caso {selectedCase.dataState === "live" ? "en vivo" : selectedCase.dataState === "recent" ? "reciente" : "preventivo"} · {selectedCase.country} · {realtime.connected ? `${Math.max(realtime.people, 1)} en sala` : "demo local"}</div>
         <button className="quiet" onClick={() => { setProposals(seedProposals); setVotes(seedVotes); setBridge(null); setProposalPage(0); setWorkspaceView("case"); setNote("Modo demo reiniciado."); }}>Reiniciar demo</button>
       </header>
 
